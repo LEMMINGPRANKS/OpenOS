@@ -1,0 +1,5 @@
+obj/
+iso_root/
+*.iso
+kernel.bin
+*.o
