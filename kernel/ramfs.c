@@ -95,6 +95,21 @@ void ramfs_list(void)
         }
 }
 
+int ramfs_enum(int idx, const char **name, uint32_t *size)
+{
+    int n = 0;
+    for (int i = 0; i < RAMFS_MAX_FILES; i++)
+        if (files[i].used) {
+            if (n == idx) {
+                *name = files[i].name;
+                *size = files[i].size;
+                return 1;
+            }
+            n++;
+        }
+    return 0;
+}
+
 int ramfs_count(void)
 {
     int n = 0;

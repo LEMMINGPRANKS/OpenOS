@@ -43,11 +43,20 @@ Never invent other naming schemes. New devices join these registers.
         auto-saves note.txt, `cat` reads it), taskbar launcher buttons +
         live clock. ESC closes the focused window; no-framebuffer machines
         fall back to the plain shell. Old `desktop` command removed.
-  - [ ] D3: more apps on the desktop (calculator, file browser, more windows
-        at once, taskbar buttons per window)
+  - [x] D3 (2026-09-25, v1.0.0): Files app (filemgr.c: keyboard file browser,
+        arrow keys + Enter) + viewer window, file extension registry (ext.c —
+        ~30 types with VGA colours, `ls` colour-codes), unified file index
+        (files.c: ramfs + IR2 together).
 - **Stage 4 — Tools**: calculator, text editor, file browser, terminal app
 - **getspgk** (curl + apt): network stack ladder — e1000 NIC driver -> DHCP ->
   ARP -> UDP -> TCP -> HTTP GET -> install packages into a RAM filesystem
+  - Status (v1.0.0): e1000 TX/RX + DHCP + ARP verified working (guest gets
+    10.0.2.15, resolves the gateway). TCP + HTTP code written but blocked:
+    QEMU's slirp silently drops our SYN before tcp_input (no connect(), no
+    RST). Debug harness: /tmp/slirp_harness replays the captured SYN into the
+    real libslirp; next step is debuginfod symbols + gdb. Target: v1.0.1.
+    Host server: `python3 tools/spgk-server.py` (guest reaches it at
+    10.0.2.2:8080 over QEMU user-net).
 
 ## Build & run
 
@@ -80,6 +89,15 @@ kernel/desktop.c/.h # Stage 3 desktop: wallpaper, taskbar, clock, launchers
 kernel/wm.c/.h     # window manager: focus, drag, close, chrome
 kernel/apps.c/.h   # app dispatch (Shell, Notepad)
 kernel/ramfs.c/.h  # writable RAM filesystem (kmalloc-backed)
+kernel/ext.c/.h    # file extension registry (type names + VGA colours)
+kernel/files.c/.h  # unified file index over ramfs + IR2
+kernel/filemgr.c/.h # Files app: keyboard-driven file browser
+kernel/pci.c/.h    # PCI config-space scan, BAR decode
+kernel/e1000.c/.h  # Intel e1000 NIC driver (polling, legacy descriptors)
+kernel/net.c/.h    # ETH/ARP/IPv4/UDP + DHCP client
+kernel/tcp.c/.h    # minimal TCP client (connect/send/recv/close)
+kernel/getspgk.c/.h # getspgk command: package downloader
+tools/spgk-server.py # host-side package server (10.0.2.2:8080)
 kernel/dev.c/.h    # DR/IR/UR device registers + UR1 watchdog
 kernel/panic.c/.h  # kpanic: red screen, halt on purpose
 initrd/            # files packed into initrd.tar (the filesystem!)

@@ -118,6 +118,32 @@ void initrd_list(void)
     }
 }
 
+// enumerate plain files (skips dirs + the "./" root entry)
+int initrd_enum(int idx, const char **name, uint64_t *size_out)
+{
+    if (!initrd_ok())
+        return 0;
+    struct tar_hdr *h = (struct tar_hdr *)rd_start;
+    int n = 0;
+    while (h && h->name[0]) {
+        const char *nm = clean_name(h->name);
+        int is_file = nm[0] != 0;
+        for (int i = 0; i < 100 && nm[i]; i++)
+            if (nm[i] == '/')
+                is_file = 0;
+        if (is_file) {
+            if (n == idx) {
+                *name = nm;
+                *size_out = octal(h->size, 12);
+                return 1;
+            }
+            n++;
+        }
+        h = next_entry(h);
+    }
+    return 0;
+}
+
 const char *initrd_read(const char *name, uint64_t *size_out)
 {
     if (!initrd_ok())

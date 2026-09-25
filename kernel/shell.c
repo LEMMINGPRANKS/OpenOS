@@ -5,6 +5,9 @@
 #include "dev.h"
 #include "initrd.h"
 #include "ramfs.h"
+#include "files.h"
+#include "ext.h"
+#include "getspgk.h"
 #include "mm.h"
 #include "heap.h"
 
@@ -75,8 +78,12 @@ static void cmd_help(void)
     term_puts("commands:\n");
     term_puts("  help          this list\n");
     term_puts("  echo <text>   say it back\n");
-    term_puts("  ls            list files (IR2 initramfs + ramfs)\n");
+    term_puts("  ls            list files, colour-coded by type\n");
     term_puts("  cat <file>    read a file (ramfs first, then IR2)\n");
+    term_puts("  file <name>   show a file's type (.txt .cpp .iso ...)\n");
+    term_puts("  getspgk list  packages on the spgk server\n");
+    term_puts("  getspgk install <pkg>  download a package into ramfs\n");
+    term_puts("  netinfo       show network info (ip, mac)\n");
     term_puts("  dev           show device registers (DR/IR/UR)\n");
     term_puts("  fire <dev>    trip a trap device (try: fire UR1)\n");
     term_puts("  meminfo       RAM map, free pages, heap use\n");
@@ -108,14 +115,14 @@ static void cmd_uptime(void)
 
 static void cmd_about(void)
 {
-    term_puts("OpenOS 0.5.0 -- a 64-bit open-source OS from scratch.\n");
-    term_puts("BDFL: Freddie. Ancestor: Bat OS. Kernel + shell + filesystem + memory + desktop.\n");
+    term_puts("OpenOS 1.0.0 -- a 64-bit open-source OS from scratch.\n");
+    term_puts("BDFL: Freddie. Kernel + shell + desktop + files + network (getspgk).\n");
 }
 
 static void cmd_banner(void)
 {
     term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
-    term_puts("\n   OpenOS 0.5.0   desktop edition\n\n");
+    term_puts("\n   OpenOS 1.0.0   desktop + getspgk edition\n\n");
     term_setcolor(TERM_COLOR_WHITE_ON_BLACK);
 }
 
@@ -218,39 +225,49 @@ void shell_execute(char *cmdline)
     else if (!strcmp(cmdline, "clear"))  term_clear();
     else if (!strcmp(cmdline, "reboot")) cmd_reboot();
     else if (!strcmp(cmdline, "ls")) {
-        if (ramfs_count())
-            ramfs_list();
-        if (!initrd_ok()) {
-            if (!ramfs_count())
-                term_puts("IR2 (initramfs) not loaded\n");
+        struct fileinfo fl[FILES_MAX];
+        int n = files_list(fl, FILES_MAX);
+        if (!n) {
+            term_puts("no files (IR2 not loaded?)\n");
             return;
         }
-        initrd_list();
+        for (int i = 0; i < n; i++) {
+            term_setcolor(ext_lookup(fl[i].name)->vga_color);
+            term_puts("  ");
+            term_puts(fl[i].name);
+            term_setcolor(TERM_COLOR_WHITE_ON_BLACK);
+            term_puts("  [");
+            term_puts(fl[i].source == FS_RAMFS ? "ramfs" : "IR2");
+            term_puts("] ");
+            print_u64(fl[i].size);
+            term_putc('\n');
+        }
     }
     else if (!strcmp(cmdline, "cat")) {
         if (!arg) { term_puts("usage: cat <file>\n"); return; }
-        uint32_t rsize = 0;
-        const char *rdata = ramfs_read(arg, &rsize);
-        if (rdata) {
-            for (uint32_t i = 0; i < rsize; i++)
-                term_putc(rdata[i]);
-            if (rsize && rdata[rsize - 1] != '\n')
-                term_putc('\n');
-            return;
-        }
-        uint64_t size = 0;
-        const char *data = initrd_read(arg, &size);
+        uint32_t size = 0;
+        const char *data = files_read(arg, &size);
         if (!data) {
             term_puts("cat: no such file: ");
             term_puts(arg);
             term_putc('\n');
             return;
         }
-        for (uint64_t i = 0; i < size; i++)
+        for (uint32_t i = 0; i < size; i++)
             term_putc(data[i]);
         if (size && data[size - 1] != '\n')
             term_putc('\n');
     }
+    else if (!strcmp(cmdline, "file")) {
+        if (!arg) { term_puts("usage: file <name>\n"); return; }
+        const struct ext_type *t = ext_lookup(arg);
+        term_puts(arg);
+        term_puts(": ");
+        term_puts(t->desc);
+        term_putc('\n');
+    }
+    else if (!strcmp(cmdline, "getspgk")) cmd_getspgk(arg);
+    else if (!strcmp(cmdline, "netinfo")) cmd_netinfo();
     else if (!strcmp(cmdline, "dev"))    dev_list();
     else if (!strcmp(cmdline, "meminfo")) cmd_meminfo();
     else if (!strcmp(cmdline, "mtest"))  cmd_mtest();

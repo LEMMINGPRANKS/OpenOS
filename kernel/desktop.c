@@ -25,6 +25,8 @@
 #define TB_SHELL_W  (5 * FONT_W + 12)
 #define TB_NOTE_X   (TB_SHELL_X + TB_SHELL_W + TB_BTN_GAP)
 #define TB_NOTE_W   (7 * FONT_W + 12)
+#define TB_FILES_X  (TB_NOTE_X + TB_NOTE_W + TB_BTN_GAP)
+#define TB_FILES_W  (5 * FONT_W + 12)
 
 #define SHELL_WIN_W 496
 #define SHELL_WIN_H 320
@@ -67,6 +69,8 @@ static void taskbar(void)
     gfx_text(TB_SHELL_X + 6, y + TB_BTN_Y + 2, "Shell", 0xFFFFFF, 0x3050C8);
     gfx_fill_rect(TB_NOTE_X, y + TB_BTN_Y, TB_NOTE_W, TB_BTN_H, 0x3050C8);
     gfx_text(TB_NOTE_X + 6, y + TB_BTN_Y + 2, "Notepad", 0xFFFFFF, 0x3050C8);
+    gfx_fill_rect(TB_FILES_X, y + TB_BTN_Y, TB_FILES_W, TB_BTN_H, 0x3050C8);
+    gfx_text(TB_FILES_X + 6, y + TB_BTN_Y + 2, "Files", 0xFFFFFF, 0x3050C8);
 
     uint64_t s = timer_uptime_ms() / 1000;
     char clock[16];
@@ -139,6 +143,9 @@ static void taskbar_click(int mx, int my)
     else if (mx >= (int32_t)TB_NOTE_X && mx < (int32_t)(TB_NOTE_X + TB_NOTE_W) &&
              my >= (int32_t)y && my < (int32_t)(y + TB_BTN_H))
         wm_open(APP_NOTEPAD, wx, wy, NOTE_WIN_W, NOTE_WIN_H);
+    else if (mx >= (int32_t)TB_FILES_X && mx < (int32_t)(TB_FILES_X + TB_FILES_W) &&
+             my >= (int32_t)y && my < (int32_t)(y + TB_BTN_H))
+        wm_open(APP_FILES, wx, wy, NOTE_WIN_W, NOTE_WIN_H);
 }
 
 void desktop_run(void)

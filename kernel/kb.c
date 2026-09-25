@@ -43,7 +43,13 @@ void kb_on_scancode(uint8_t sc)
     }
     if (extended) {
         extended = 0;
-        return;                        // ignore for now
+        if (sc & 0x80)
+            return;                    // key release
+        if (sc == 0x48) push(KEY_UP);
+        else if (sc == 0x50) push(KEY_DOWN);
+        else if (sc == 0x4B) push(KEY_LEFT);
+        else if (sc == 0x4D) push(KEY_RIGHT);
+        return;
     }
     if (sc == 0x2A || sc == 0x36) { shift = 1; return; }
     if (sc == 0xAA || sc == 0xB6) { shift = 0; return; }

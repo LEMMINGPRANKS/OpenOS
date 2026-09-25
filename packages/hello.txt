@@ -1,0 +1,2 @@
+Hello from getspgk!
+This file was downloaded over real TCP/IP by OpenOS 1.0.0.
