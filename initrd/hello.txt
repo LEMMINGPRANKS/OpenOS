@@ -1,0 +1,2 @@
+Hello from IR2! If you can read this, the OpenOS filesystem works.
+Try: cat devices.txt

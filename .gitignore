@@ -3,3 +3,4 @@ iso_root/
 *.iso
 kernel.bin
 *.o
+initrd.tar

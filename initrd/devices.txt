@@ -1,0 +1,12 @@
+OpenOS device registers (the law, by Freddie, BDFL)
+
+DR = drive register, IR = internal register, UR = unsupported register
+
+DR1  main drive
+DR2  SD card slot
+DR3  USB slot
+IR1  RAM
+IR2  initramfs (this filesystem!)
+UR1  unsupported-device trap: constantly watches for unsupported
+     memory; when it fires, the kernel crashes ON PURPOSE so the
+     bad thing can never sneak past.

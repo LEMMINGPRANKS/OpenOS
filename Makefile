@@ -4,15 +4,21 @@ LD      = ld
 
 CFLAGS  = -Wall -Wextra -std=c11 -ffreestanding -fno-stack-protector \
           -fno-pic -fno-pie -mno-red-zone -mcmodel=kernel -O2 -m64 \
-          -fno-asynchronous-unwind-tables
+          -fno-asynchronous-unwind-tables -mgeneral-regs-only
 ASFLAGS = -f elf64
-LDFLAGS = -nostdlib -static --build-id=none -T linker.ld
+LDFLAGS = -nostdlib -static --build-id=none -z noexecstack -T linker.ld
 
-OBJS = obj/boot.o obj/term.o obj/kmain.o
+OBJS = obj/boot.o obj/isr.o obj/term.o obj/idt.o obj/timer.o \
+       obj/kb.o obj/shell.o obj/initrd.o obj/dev.o obj/panic.o \
+       obj/mm.o obj/heap.o obj/font.o obj/gfx.o obj/mouse.o \
+       obj/wm.o obj/apps.o obj/ramfs.o obj/desktop.o obj/kmain.o
 
 all: openos.iso
 
 obj/boot.o: boot/boot.asm | obj
+	$(AS) $(ASFLAGS) -o $@ $<
+
+obj/isr.o: kernel/isr.asm | obj
 	$(AS) $(ASFLAGS) -o $@ $<
 
 obj/%.o: kernel/%.c | obj
@@ -25,10 +31,14 @@ kernel.bin: $(OBJS) linker.ld
 	$(LD) $(LDFLAGS) -o kernel.bin $(OBJS)
 	grub-file --is-x86-multiboot2 kernel.bin
 
-iso_root/boot/grub/grub.cfg: grub/grub.cfg
+iso_root/boot/grub/grub.cfg: grub/grub.cfg kernel.bin initrd.tar
 	mkdir -p iso_root/boot/grub
 	cp grub/grub.cfg iso_root/boot/grub/grub.cfg
 	cp kernel.bin iso_root/boot/kernel.bin
+	cp initrd.tar iso_root/boot/initrd.tar
+
+initrd.tar: $(wildcard initrd/*)
+	tar -cf initrd.tar -C initrd .
 
 openos.iso: kernel.bin iso_root/boot/grub/grub.cfg
 	grub-mkrescue -o openos.iso iso_root

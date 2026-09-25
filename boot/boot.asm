@@ -12,7 +12,16 @@ header_start:
     dd 0                            ; architecture: i386 (32-bit protected)
     dd header_end - header_start
     dd 0x100000000 - (MB2_MAGIC + 0 + (header_end - header_start)) ; checksum
+    ; framebuffer request tag: any preferred graphics mode
+    align 8
+    dw 5                            ; type = framebuffer
+    dw 0                            ; flags = optional
+    dd 20                           ; size
+    dd 0                            ; width  (0 = preferred)
+    dd 0                            ; height (0 = preferred)
+    dd 32                           ; depth  (we want 32 bpp)
     ; end tag
+    align 8
     dw 0
     dw 8
     dd 0
@@ -23,7 +32,9 @@ section .bss
 align 4096
 pml4:   resb 4096                   ; level-4 page table
 pdpt:   resb 4096                   ; level-3
-pd:     resb 4096                   ; level-2 (512 entries = 1 GiB of 2 MiB pages)
+pd0:    resb 4096 * 4               ; level-2 x4 (512 entries each = 1 GiB of 2 MiB pages)
+mb_magic: resd 1                    ; parked multiboot2 magic
+mb_info:  resd 1                    ; parked multiboot2 info pointer
 align 16
 stack_bottom:
     resb 65536                      ; 64 KiB bootstrap stack
@@ -50,28 +61,43 @@ _start:
     mov esp, stack_top
 
     ; GRUB left the multiboot2 magic in eax and the info pointer in ebx.
-    ; Park them in edi/esi so they survive into 64-bit mode as rdi/rsi
-    ; (the first two C arguments).
-    mov edi, eax
-    mov esi, ebx
+    ; Park them in memory -- the mapping loops below need every register.
+    mov [mb_magic], eax
+    mov [mb_info], ebx
 
-    ; --- identity-map the first 1 GiB with 2 MiB huge pages ---
+    ; --- identity-map ALL 4 GiB with 2 MiB huge pages ---
+    ; (QEMU puts the VBE framebuffer way up at 0xFD000000)
     mov eax, pdpt
     or  eax, 0x3                    ; present | writable
     mov [pml4], eax
-    mov eax, pd
-    or  eax, 0x3
-    mov [pdpt], eax
 
-    xor ecx, ecx
-.map_pd:
-    mov eax, ecx
-    shl eax, 21                     ; ecx * 2 MiB
+    xor ecx, ecx                    ; ecx = which GiB (0..3)
+.map_gib:
+    mov edx, ecx
+    shl edx, 12
+    mov eax, pd0
+    add eax, edx                    ; eax = &pd0[GiB]
+    or  eax, 0x3
+    mov [pdpt + ecx*8], eax
+
+    mov esi, ecx
+    shl esi, 30                     ; esi = base address of this GiB
+    xor edi, edi                    ; edi = entry index within the GiB
+.fill_pd:
+    mov eax, edi
+    shl eax, 21                     ; entry * 2 MiB
+    add eax, esi
     or  eax, 0x83                   ; present | writable | huge (PS bit)
-    mov [pd + ecx*8], eax
+    mov edx, ecx
+    shl edx, 12
+    add edx, pd0
+    mov [edx + edi*8], eax
+    inc edi
+    cmp edi, 512
+    jne .fill_pd
     inc ecx
-    cmp ecx, 512
-    jne .map_pd
+    cmp ecx, 4
+    jne .map_gib
 
     ; --- switch the CPU on: PAE, EFER.LME, paging ---
     mov eax, cr4
@@ -103,7 +129,9 @@ long_mode_start:
     mov gs, ax
 
     mov rsp, stack_top
-    ; rdi = multiboot2 magic, rsi = info struct (parked in 32-bit code)
+    ; rdi = multiboot2 magic, rsi = info struct (parked in memory earlier)
+    mov edi, [mb_magic]
+    mov esi, [mb_info]
     call kmain
 
 .hang:
