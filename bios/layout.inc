@@ -25,3 +25,7 @@ INITRD_ADDR   equ 0x400000           ; above the kernel's bss end
 ; the fake multiboot2 info block stage2 builds for the kernel
 MB2_ADDR      equ 0x7000
 E820_BUF      equ 0x5000             ; raw E820 entries land here first
+
+; VBE scratch buffers (controller info 512 B, mode info 256 B)
+VBE_INFO      equ 0x9000
+MODE_INFO     equ 0x9800

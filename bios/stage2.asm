@@ -127,6 +127,72 @@ start:
     mov si, msg_pm
     call puts
 
+    ; --- VBE: find + set 800x600, 24 or 32 bpp, linear framebuffer ---
+    mov ax, 0
+    mov es, ax
+    mov di, VBE_INFO
+    mov dword [VBE_INFO], 0x32454256  ; "VBE2" signature the BIOS wants
+    mov ax, 0x4F00
+    int 0x10
+    cmp ax, 0x004F
+    jne .no_vbe
+    mov byte [vbe_want], 32
+.vbe_pass:
+    mov si, [VBE_INFO + 14]           ; mode list: far ptr at +14 (off, seg)
+    mov word [vbe_found], 0
+.vbe_scan:
+    mov ax, [VBE_INFO + 16]
+    mov gs, ax
+    gs lodsw                          ; next mode number (list seg != our ds)
+    cmp ax, 0xFFFF
+    je  .vbe_scan_done
+    mov [vbe_mode], ax
+    mov cx, ax
+    mov ax, 0x4F01
+    mov di, MODE_INFO
+    int 0x10
+    cmp ax, 0x004F
+    jne .vbe_scan
+    cmp word [MODE_INFO + 0x12], 800
+    jne .vbe_scan
+    cmp word [MODE_INFO + 0x14], 600
+    jne .vbe_scan
+    mov al, [MODE_INFO + 0x19]
+    cmp al, [vbe_want]
+    jne .vbe_scan
+    ; (SeaBIOS never sets mode-attr bit 7, so we trust PhysBasePtr != 0
+    ;  as the proof a linear framebuffer exists for this mode)
+    cmp dword [MODE_INFO + 0x28], 0
+    je  .vbe_scan
+    mov al, [MODE_INFO + 0x1B]        ; memory model: 4 packed / 6 direct
+    cmp al, 4
+    je  .vbe_found
+    cmp al, 6
+    je  .vbe_found
+    jmp .vbe_scan
+.vbe_found:
+    mov word [vbe_found], 1
+.vbe_scan_done:
+    cmp word [vbe_found], 0
+    jne .vbe_set
+    cmp byte [vbe_want], 32
+    jne .no_vbe
+    mov byte [vbe_want], 24           ; no 32 bpp mode? try 24 before giving up
+    jmp .vbe_pass
+.vbe_set:
+    mov bx, [vbe_mode]
+    or  bx, 0x4000                    ; set with the LFB bit
+    mov ax, 0x4F02
+    int 0x10
+    cmp ax, 0x004F
+    jne .no_vbe
+    mov byte [vbe_ok], 1
+    jmp .vbe_done
+.no_vbe:
+    mov si, msg_novbe
+    call puts
+.vbe_done:
+
     ; --- protected mode ---
     cli
     lgdt [gdt_ptr]
@@ -183,12 +249,17 @@ puts:
     jmp puts
 .done:
     ret
+putc:
+    mov ah, 0x0E
+    mov bx, 0x0007
+    int 0x10
+    ret
 
 put_hex8:                          ; print AL as two hex digits
-    mov ah, al
+    mov dl, al                      ; keep a copy: put_nib clobbers ah
     shr al, 4
     call put_nib
-    mov al, ah
+    mov al, dl
     and al, 0x0F
     call put_nib
     ret
@@ -237,12 +308,17 @@ dap_lba:   dq 0
 boot_drive:  db 0
 e820_count:  dd 0
 disk_err:    db 0
+vbe_want:    db 32
+vbe_found:   dw 0
+vbe_mode:    dw 0
+vbe_ok:      db 0
 
 msg_stage2: db "OpenBIOS stage2", 13, 10, 0
 msg_mem:    db " memory mapped", 13, 10, 0
 msg_kernel: db " loading kernel", 13, 10, 0
 msg_initrd: db " loading initrd", 13, 10, 0
 msg_pm:     db " protected mode...", 13, 10, 0
+msg_novbe:  db " no VBE -- serial shell boot", 13, 10, 0
 msg_disk:   db "disk read failed 0x", 0
 msg_crlf:   db 13, 10, 0
 
@@ -330,6 +406,32 @@ pm_start:
     mov ecx, edx
     shr ecx, 2                       ; bytes -> dwords
     rep movsd
+
+    ; tag 8: framebuffer -- only if VBE set a mode for us
+    cmp byte [vbe_ok], 0
+    je  .no_fb_tag
+    mov eax, 8
+    stosd
+    mov eax, 40
+    stosd
+    mov eax, [MODE_INFO + 0x28]
+    stosd                            ; fb addr low
+    xor eax, eax
+    stosd                            ; fb addr high (QEMU's LFB is < 4 GiB)
+    movzx eax, word [MODE_INFO + 0x10]
+    stosd                            ; pitch
+    movzx eax, word [MODE_INFO + 0x12]
+    stosd                            ; width
+    movzx eax, word [MODE_INFO + 0x14]
+    stosd                            ; height
+    movzx eax, byte [MODE_INFO + 0x19]
+    mov ah, 1                        ; bpp | fb_type(1 = direct RGB) << 8
+    stosd
+    mov eax, 0x08080810              ; r_pos 16, r_size 8, g_pos 8, g_size 8
+    stosd
+    mov eax, 0x00000800              ; b_pos 0, b_size 8, pad
+    stosd
+.no_fb_tag:
 
     ; end tag
     xor eax, eax
