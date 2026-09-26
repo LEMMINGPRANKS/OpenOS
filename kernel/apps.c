@@ -10,6 +10,8 @@
 #include "browser.h"
 #include "news.h"
 #include "http.h"
+#include "net.h"
+#include "desktop.h"
 
 // Apps are the things that can live inside a window. Each app gets
 // keyboard chars through app_input with the window's console.
@@ -136,6 +138,81 @@ static uint32_t ip_parse(const char *s, int n)
     return i == n ? ip : 0;
 }
 
+static int ends_with(const char *s, const char *suf);   // defined below
+static void burl_set(const char *s);
+static void browser_load(struct console *con);
+
+// a downloaded non-HTML file: install into ramfs so it shows up as a
+// brand-new desktop icon -- this IS the updater's "grab a new feature"
+static void browser_install(struct console *con, const char *path,
+                            const uint8_t *body, uint32_t n)
+{
+    const char *nm = path;
+    for (const char *q = path; *q; q++)
+        if (*q == '/')
+            nm = q + 1;
+    char fpath[80];
+    int fn = 0;
+    fpath[fn++] = '/';
+    for (int i = 0; nm[i] && fn < 78; i++)
+        fpath[fn++] = nm[i];
+    fpath[fn] = 0;
+    if (ramfs_write(fpath, (const char *)body, n) != 0) {
+        burl_draw(con);
+        term_goto(con, 0, 1);
+        term_puts("(ramfs full -- could not install)\n");
+        return;
+    }
+    char msg[220];
+    int m = 0;
+    const char *parts[] = {
+        "<html><body><h1>Installed!</h1><p>", nm,
+        " is on the desktop now. Double-click its icon to run it.</p>"
+        "<p><a href='/updates'>more updates</a></p></body></html>"
+    };
+    for (int i = 0; i < 3; i++)
+        for (const char *p = parts[i]; *p && m < 218; p++)
+            msg[m++] = *p;
+    msg[m] = 0;
+    browser_render(con, msg, (uint32_t)m, burl);
+    desktop_repaint();                   // new icon appears immediately
+}
+
+static void browser_click(struct console *con, int mx, int my)
+{
+    char href[96];
+    if (!browser_link_at(con, mx, my, href, sizeof href))
+        return;
+    if (href[0] == '/') {                // relative: our update server
+        char addr[112];
+        char ip[16];
+        net_ip_str(http_server_ip(), ip);
+        uint32_t pv = http_server_port();
+        if (!pv) pv = 8080;
+        int k = 0;
+        for (int i = 0; ip[i] && k < 110; i++)  addr[k++] = ip[i];
+        addr[k++] = ':';
+        char pd[8];
+        int pn = 0;
+        do { pd[pn++] = (char)('0' + pv % 10); pv /= 10; } while (pv && pn < 7);
+        while (pn) addr[k++] = pd[--pn];
+        for (int i = 0; href[i] && k < 110; i++) addr[k++] = href[i];
+        addr[k] = 0;
+        burl_set(addr);
+    } else {
+        burl_set(href);
+    }
+    browser_load(con);
+}
+
+static void burl_set(const char *s)
+{
+    burl_n = 0;
+    for (int i = 0; s[i] && burl_n < BURL_MAX - 1; i++)
+        burl[burl_n++] = s[i];
+    burl[burl_n] = 0;
+}
+
 static void browser_load(struct console *con)
 {
     char u[BURL_MAX];
@@ -158,14 +235,18 @@ static void browser_load(struct console *con)
         if (u[i] == '/') { slash = i; break; }
         if (hn < 79) host[hn++] = u[i];
     }
-    const char *path = slash >= 0 ? u + slash : "/";
+    const char *path = slash >= 0 ? u + slash : u;   // bare name = file name
     uint16_t port = 8080;
     for (int i = 0; i < hn; i++)
         if (host[i] == ':') {
             uint32_t v = 0;
-            for (int k = i + 1; k < hn; k++)
+            int ok = 1;
+            for (int k = i + 1; k < hn; k++) {
+                if (host[k] < '0' || host[k] > '9') { ok = 0; break; }
                 v = v * 10 + (uint32_t)(host[k] - '0');
-            if (v) port = (uint16_t)v;
+                if (v > 65535) { ok = 0; break; }
+            }
+            if (ok && v) port = (uint16_t)v;
             hn = i;
             break;
         }
@@ -183,7 +264,11 @@ static void browser_load(struct console *con)
         if (http_ensure_net() == 0) {
             int n = http_get(path, body, HTTP_MAX);
             if (n > 0) {
-                browser_render(con, (const char *)body, (uint32_t)n, burl);
+                if (ends_with(path, ".html")) {
+                    browser_render(con, (const char *)body, (uint32_t)n, burl);
+                    return;
+                }
+                browser_install(con, path, body, (uint32_t)n);
                 return;
             }
             term_puts("(the server did not answer with a page)\n");
@@ -235,6 +320,8 @@ static void browser_open(struct console *con)
 {
     burl_n = 0;
     burl[0] = 0;
+    if (!app_arg[0])                     // blank Browser: the home page
+        burl_set("demo.html");
     if (app_arg[0]) {                    // opened from a double-click
         for (int i = 0; app_arg[i] && burl_n < BURL_MAX - 1; i++)
             burl[burl_n++] = app_arg[i];
@@ -353,6 +440,8 @@ void app_click(enum app_id app, struct console *con, int mx, int my, int dbl)
 {
     if (app == APP_FILES)
         filemgr_click(con, mx, my, dbl);
+    else if (app == APP_BROWSER)
+        browser_click(con, mx, my);
     (void)mx; (void)my; (void)dbl;
 }
 

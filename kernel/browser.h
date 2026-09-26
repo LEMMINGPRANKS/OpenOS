@@ -12,4 +12,7 @@
 void browser_render(struct console *con, const char *html, uint32_t len,
                     const char *url);
 
+// clickable links: pixel -> href of the link under (mx,my), if any
+int browser_link_at(struct console *con, int mx, int my, char *href, int hmax);
+
 #endif

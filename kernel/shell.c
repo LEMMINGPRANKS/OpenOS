@@ -14,6 +14,9 @@
 #include "gfx.h"
 #include "wm.h"
 #include "apps.h"
+#include "http.h"
+#include "desktop.h"
+#include "version.h"
 #include "mm.h"
 #include "heap.h"
 
@@ -121,6 +124,7 @@ static void cmd_help(void)
     term_puts("  getspgk server <ip>    use a real LAN machine as the server\n");
     term_puts("  netinfo       show network info (ip, mac)\n");
     term_puts("  news          fetch the latest OpenOS updates over TCP\n");
+    term_puts("  update        install fresh features from the update server\n");
     term_puts("  dev           show device registers (DR/IR/UR)\n");
     term_puts("  fire <dev>    trip a trap device (try: fire UR1)\n");
     term_puts("  meminfo       RAM map, free pages, heap use\n");
@@ -152,14 +156,93 @@ static void cmd_uptime(void)
 
 static void cmd_about(void)
 {
-    term_puts("OpenOS 1.0.2 -- a 64-bit open-source OS from scratch.\n");
+    term_puts("OpenOS " OS_VERSION " -- a 64-bit open-source OS from scratch.\n");
     term_puts("BDFL: Freddie. Kernel + shell + desktop + files + network (getspgk).\n");
 }
 
 static void cmd_banner(void)
 {
     term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
-    term_puts("\n   OpenOS 1.0.2   cd + OpenJS + double-click + browser + news edition\n\n");
+    term_puts("\n   OpenOS " OS_VERSION "   cd + OpenJS + browser + news + updates\n\n");
+}
+
+// the updater: ask the server what's new and install it live
+static void cmd_update(void)
+{
+    term_puts("checking the update server...\n");
+    if (http_ensure_net() != 0)
+        return;
+    static uint8_t buf[HTTP_MAX];
+    int n = http_get("/version", buf, HTTP_MAX);
+    if (n <= 0) {
+        term_puts("could not reach the update server\n");
+        return;
+    }
+    int vn = n < (int)sizeof buf - 1 ? n : (int)sizeof buf - 1;
+    buf[vn] = 0;
+    term_puts("server feature pack: ");
+    term_puts((const char *)buf);
+    term_putc('\n');
+    term_puts("this OpenOS       : ");
+    term_puts(OS_VERSION);
+    term_putc('\n');
+
+    n = http_get("/updates/index", buf, HTTP_MAX);
+    if (n <= 0) {
+        term_puts("no updates listed on the server\n");
+        return;
+    }
+    int installed = 0;
+    for (int i = 0; i < n; ) {
+        char name[64];
+        int ln = 0;
+        while (i < n && buf[i] != '\n' && buf[i] != '\r')
+            if (ln < 62) name[ln++] = (char)buf[i++];
+            else i++;
+        name[ln] = 0;
+        while (i < n && (buf[i] == '\n' || buf[i] == '\r'))
+            i++;
+        if (!ln)
+            continue;
+        char upath[80];
+        int un = 0;
+        const char *pre = "/updates/";
+        while (*pre && un < 78) upath[un++] = *pre++;
+        for (int k = 0; name[k] && un < 78; k++)
+            upath[un++] = name[k];
+        upath[un] = 0;
+        static uint8_t fbuf[HTTP_MAX];
+        int fn = http_get(upath, fbuf, HTTP_MAX);
+        if (fn <= 0) {
+            term_puts("  could not fetch ");
+            term_puts(name);
+            term_putc('\n');
+            continue;
+        }
+        char fpath[80];
+        fpath[0] = '/';
+        int fpn = 1;
+        for (int k = 0; name[k] && fpn < 78; k++)
+            fpath[fpn++] = name[k];
+        fpath[fpn] = 0;
+        if (ramfs_write(fpath, (const char *)fbuf, (uint32_t)fn) != 0) {
+            term_puts("  ramfs full, could not install ");
+            term_puts(name);
+            term_putc('\n');
+            continue;
+        }
+        term_puts("  installed ");
+        term_puts(name);
+        term_putc('\n');
+        installed++;
+    }
+    if (installed) {
+        desktop_repaint();               // fresh icons, right now
+        term_puts("new features are on the desktop -- no reboot needed!\n");
+        term_puts("(or browse to 10.0.2.2:8080/updates to pick by hand)\n");
+    } else {
+        term_puts("nothing to install\n");
+    }
 }
 
 static void print_hex(uint64_t v)
@@ -333,6 +416,7 @@ void shell_execute(char *cmdline)
     }
     else if (!strcmp(cmdline, "getspgk")) cmd_getspgk(arg);
     else if (!strcmp(cmdline, "netinfo")) cmd_netinfo();
+    else if (!strcmp(cmdline, "update")) cmd_update();
     else if (!strcmp(cmdline, "news")) {
         if (gfx_available())
             wm_open(APP_NEWS, 60, 40, 432, 424);

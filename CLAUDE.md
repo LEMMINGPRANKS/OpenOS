@@ -75,6 +75,11 @@ Never invent other naming schemes. New devices join these registers.
   - News app: taskbar News button / `news` command fetches /news from
     the spgk server over our own TCP + DHCP + e1000 stack and renders
     it as HTML. HTTP client extracted to kernel/http.c for all apps.
+  - Updater: `update` command installs every feature from the server's
+    /updates/index into ramfs (new desktop icons appear instantly, no
+    reboot); the Browser can also browse to `10.0.2.2:8080/updates` and
+    click a feature link to install just that one. Server /version says
+    which feature pack is out; kernel/version.h holds OS_VERSION.
 - **v1.1.0**: full from-scratch web browser (DNS -> HTTP -> HTML subset ->
   WM window; Electron is impossible — it needs a host OS underneath) +
   system updates delivered as spgk packages over the same stack
@@ -117,6 +122,7 @@ kernel/js.c/.h     # OpenJS: JavaScript interpreter (lexer+parser+eval)
 kernel/browser.c/.h # HTML renderer (tag-aware text, colours, links)
 kernel/http.c/.h   # shared HTTP client (used by getspgk + news)
 kernel/news.c/.h   # News app: fetches /news and renders it
+kernel/version.h   # single OS_VERSION string used by every banner
 kernel/filemgr.c/.h # Files app: keyboard + mouse file browser
 kernel/pci.c/.h    # PCI config-space scan, BAR decode
 kernel/e1000.c/.h  # Intel e1000 NIC driver (polling, legacy descriptors)

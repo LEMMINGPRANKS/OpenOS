@@ -163,6 +163,13 @@ uint16_t term_cols(struct console *c)
     return c ? c->cols : 0;
 }
 
+void term_pos(struct console *c, int *col, int *row)
+{
+    if (!c) { *col = 0; *row = 0; return; }
+    *col = c->ccol;
+    *row = c->crow;
+}
+
 int term_locate(struct console *c, int mx, int my, int *col, int *row)
 {
     if (!c)

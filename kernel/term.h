@@ -19,6 +19,7 @@ void term_render(struct console *con);     // redraw just this console
 void term_move(struct console *con, uint32_t px, uint32_t py); // drag support
 int term_goto(struct console *con, int col, int row);  // move the write cursor
 uint16_t term_cols(struct console *con);
+void term_pos(struct console *con, int *col, int *row);
 int term_locate(struct console *con, int mx, int my, int *col, int *row);
 
 void term_putc(char c);

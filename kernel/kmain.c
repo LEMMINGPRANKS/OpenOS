@@ -8,6 +8,7 @@
 #include "mouse.h"
 #include "ramfs.h"
 #include "desktop.h"
+#include "version.h"
 
 #define MB2_BOOT_MAGIC 0x36D76289
 
@@ -29,7 +30,7 @@ void kmain(unsigned long magic, unsigned long addr)
     mouse_init();                       // and a mouse (IRQ12)
 
     term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
-    term_puts("\n   OpenOS 1.0.2\n");
+    term_puts("\n   OpenOS " OS_VERSION "\n");
     term_puts("   booting to desktop...\n\n");
     term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
 

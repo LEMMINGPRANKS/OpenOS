@@ -63,6 +63,37 @@ static int is_heading(const char *tag)
     return tag[0] == 'h' && tag[1] >= '1' && tag[1] <= '6' && !tag[2];
 }
 
+// link spans, remembered so the Browser can make them clickable
+#define BR_MAX_LINKS 24
+struct br_link {
+    struct console *con;
+    int r0, r1;                     // rows the link's text occupies
+    char href[96];
+};
+static struct br_link br_links[BR_MAX_LINKS];
+static int br_nlinks;
+
+void browser_link_at_reset(void)
+{
+    br_nlinks = 0;
+}
+
+// pixel -> href, if the click landed on a link
+int browser_link_at(struct console *con, int mx, int my, char *href, int hmax)
+{
+    int col, row;
+    if (!term_locate(con, mx, my, &col, &row))
+        return 0;
+    for (int i = 0; i < br_nlinks; i++)
+        if (br_links[i].con == con && row >= br_links[i].r0 && row <= br_links[i].r1) {
+            for (int k = 0; k < hmax - 1 && br_links[i].href[k]; k++)
+                href[k] = br_links[i].href[k];
+            href[hmax - 1] = 0;
+            return 1;
+        }
+    return 0;
+}
+
 // the "<title>" line shown at the very top of the page
 static void render_title(const char *html, uint32_t len)
 {
@@ -109,6 +140,8 @@ void browser_render(struct console *con, const char *html, uint32_t len,
     char skip_tag[8] = { 0 };   // inside <script>/<style>: swallow all
     char href[96];              // link target currently being read
     int in_link = 0;
+    int link_row0 = 0;          // where the current link's text started
+    br_nlinks = 0;
 
     uint32_t i = 0;
     while (i < len) {
@@ -196,12 +229,28 @@ void browser_render(struct console *con, const char *html, uint32_t len,
                 k++;
             }
             in_link = 1;
+            {
+                int tc, tr;
+                term_pos(con, &tc, &tr);
+                link_row0 = tr;
+            }
             term_setcolor(BR_LINK);
         } else if (closing && eq(name, "a")) {
             if (href[0]) {
                 emit_str(" [");
                 emit_str(href);
                 emit_char(']');
+            }
+            if (in_link && href[0] && br_nlinks < BR_MAX_LINKS) {
+                int tc, tr;
+                term_pos(con, &tc, &tr);
+                br_links[br_nlinks].con = con;
+                br_links[br_nlinks].r0 = link_row0;
+                br_links[br_nlinks].r1 = tr;
+                for (int k = 0; k < 95 && href[k]; k++)
+                    br_links[br_nlinks].href[k] = href[k];
+                br_links[br_nlinks].href[95] = 0;
+                br_nlinks++;
             }
             in_link = 0;
             term_setcolor(BR_TEXT);

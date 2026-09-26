@@ -95,6 +95,10 @@ static void lex(const char *src, uint32_t len)
             t->kind = T_OP; t->op = (char)0xF6; i += 2;       // +=
         } else if (c == '-' && i + 1 < len && src[i + 1] == '=') {
             t->kind = T_OP; t->op = (char)0xF7; i += 2;       // -=
+        } else if (c == '&' && i + 1 < len && src[i + 1] == '&') {
+            t->kind = T_OP; t->op = (char)0xE0; i += 2;       // &&
+        } else if (c == '|' && i + 1 < len && src[i + 1] == '|') {
+            t->kind = T_OP; t->op = (char)0xE1; i += 2;       // ||
         } else {
             t->kind = T_OP; t->op = c;
             i++;
@@ -110,7 +114,7 @@ static void lex(const char *src, uint32_t len)
 enum {
     N_NUM, N_STR, N_IDENT, N_BIN, N_UN, N_CALL, N_MEMBER, N_INC,
     N_VAR, N_ASSIGN, N_EXPR, N_IF, N_WHILE, N_FOR, N_BLOCK,
-    N_FUNC, N_RETURN, N_BREAK, N_CONTINUE
+    N_FUNC, N_RETURN, N_BREAK, N_CONTINUE, N_AND, N_OR
 };
 
 struct node {
@@ -327,9 +331,33 @@ static struct node *parse_eq(void)
     return n;
 }
 
+static struct node *parse_and(void)
+{
+    struct node *n = parse_eq();
+    while (!jserr && at_op((char)0xE0)) {              // &&
+        tp++;
+        struct node *e = new_node(N_AND);
+        if (e) { e->a = n; e->b = parse_eq(); }
+        n = e;
+    }
+    return n;
+}
+
+static struct node *parse_or(void)
+{
+    struct node *n = parse_and();
+    while (!jserr && at_op((char)0xE1)) {              // ||
+        tp++;
+        struct node *e = new_node(N_OR);
+        if (e) { e->a = n; e->b = parse_and(); }
+        n = e;
+    }
+    return n;
+}
+
 static struct node *parse_expr(void)
 {
-    struct node *lhs = parse_eq();
+    struct node *lhs = parse_or();
     if (jserr || !lhs)
         return lhs;
     if (at_op('=')) {
@@ -722,6 +750,20 @@ static struct val eval(struct node *n)
         if (n->op == (char)0xF1) return num_val(!(a.t == b.t && a.n == b.n && a.s == b.s));
         fail("unknown operator");
         return v;
+    }
+    case N_AND: {                                       // && short-circuits
+        struct val a = eval(n->a);
+        if (jserr) return v;
+        if (!val_true(a))
+            return num_val(0);
+        return num_val(val_true(eval(n->b)));
+    }
+    case N_OR: {                                        // || short-circuits
+        struct val a = eval(n->a);
+        if (jserr) return v;
+        if (val_true(a))
+            return num_val(1);
+        return num_val(val_true(eval(n->b)));
     }
     case N_INC: {
         if (n->a->kind != N_IDENT) {
