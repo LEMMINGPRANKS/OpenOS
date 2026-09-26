@@ -314,6 +314,8 @@ static void cmd_update(void)
     }
     if (installed) {
         desktop_repaint();               // fresh icons, right now
+        if (store_flush() >= 0)
+            term_puts("saved to DR1 -- they survive reboot now\n");
         term_puts("new features are on the desktop -- no reboot needed!\n");
         term_puts("(or browse to 10.0.2.2:8080/updates to pick by hand)\n");
     } else {

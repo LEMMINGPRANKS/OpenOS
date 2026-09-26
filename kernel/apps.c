@@ -12,6 +12,7 @@
 #include "http.h"
 #include "net.h"
 #include "desktop.h"
+#include "store.h"
 
 // Apps are the things that can live inside a window. Each app gets
 // keyboard chars through app_input with the window's console.
@@ -176,6 +177,7 @@ static void browser_install(struct console *con, const char *path,
     msg[m] = 0;
     browser_render(con, msg, (uint32_t)m, burl);
     desktop_repaint();                   // new icon appears immediately
+    store_flush();                       // and it survives reboot (DR1)
 }
 
 static void browser_click(struct console *con, int mx, int my)
