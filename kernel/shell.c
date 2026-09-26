@@ -8,6 +8,7 @@
 #include "files.h"
 #include "ext.h"
 #include "path.h"
+#include "js.h"
 #include "getspgk.h"
 #include "mm.h"
 #include "heap.h"
@@ -109,6 +110,7 @@ static void cmd_help(void)
     term_puts("  cd <dir>      change directory (cd .. goes up, cd goes home)\n");
     term_puts("  pwd           print the current directory\n");
     term_puts("  cat <file>    read a file (ramfs first, then IR2)\n");
+    term_puts("  run <file.js> execute an OpenJS script\n");
     term_puts("  file <name>   show a file's type (.txt .cpp .iso ...)\n");
     term_puts("  getspgk list  packages on the spgk server\n");
     term_puts("  getspgk install <pkg>  download a package into ramfs\n");
@@ -299,6 +301,22 @@ void shell_execute(char *cmdline)
             term_putc(data[i]);
         if (size && data[size - 1] != '\n')
             term_putc('\n');
+    }
+    else if (!strcmp(cmdline, "run")) {
+        if (!arg) { term_puts("usage: run <file.js>\n"); return; }
+        char full[PATH_MAX];
+        path_resolve(cwd, arg, full);
+        uint32_t size = 0;
+        const char *data = files_read(full, &size);
+        if (!data) {
+            term_puts("run: no such file: ");
+            term_puts(arg);
+            term_putc('\n');
+            return;
+        }
+        char err[80];
+        if (js_run(data, size, err, sizeof err) != 0)
+            term_puts(err);
     }
     else if (!strcmp(cmdline, "file")) {
         if (!arg) { term_puts("usage: file <name>\n"); return; }
