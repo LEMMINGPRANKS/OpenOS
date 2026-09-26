@@ -8,6 +8,7 @@
 #include "mouse.h"
 #include "ramfs.h"
 #include "desktop.h"
+#include "ata.h"
 #include "version.h"
 
 #define MB2_BOOT_MAGIC 0x36D76289
@@ -28,6 +29,7 @@ void kmain(unsigned long magic, unsigned long addr)
     idt_init();
     __asm__ volatile ("sti");           // the kernel gets a heartbeat
     mouse_init();                       // and a mouse (IRQ12)
+    ata_init();                         // DR1: the main drive, if there is one
 
     term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
     term_puts("\n   OpenOS " OS_VERSION "\n");

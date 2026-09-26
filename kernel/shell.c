@@ -19,6 +19,7 @@
 #include "version.h"
 #include "mm.h"
 #include "heap.h"
+#include "ata.h"
 
 #define LINE_MAX 128
 #define SHELL_STATES 5          // [0] = boot/VGA console, rest = windows
@@ -126,6 +127,7 @@ static void cmd_help(void)
     term_puts("  news          fetch the latest OpenOS updates over TCP\n");
     term_puts("  update        install fresh features from the update server\n");
     term_puts("  dev           show device registers (DR/IR/UR)\n");
+    term_puts("  disk          DR1 info ('disk test' writes + reads a sector)\n");
     term_puts("  fire <dev>    trip a trap device (try: fire UR1)\n");
     term_puts("  meminfo       RAM map, free pages, heap use\n");
     term_puts("  mtest         exercise kmalloc/kfree, prove it works\n");
@@ -152,6 +154,54 @@ static void cmd_uptime(void)
     if (ms % 1000 < 10) term_putc('0');
     print_u64(ms % 1000);
     term_puts(" seconds\n");
+}
+
+// DR1: show the main drive, or prove the metal with a write+read round trip
+#define DISK_SCRATCH_LBA 3100          // above the store area (2048..3071)
+
+static void cmd_disk(char *arg)
+{
+    if (!ata_present()) {
+        term_puts("DR1: no drive found\n");
+        return;
+    }
+    if (arg && !strcmp(arg, "test")) {
+        static uint8_t wbuf[512], rbuf[512];
+        for (int i = 0; i < 512; i++)
+            wbuf[i] = (uint8_t)(i ^ 0x5A);
+        if (ata_write(DISK_SCRATCH_LBA, 1, wbuf) != 0) {
+            term_puts("disk test: WRITE failed (status 0x");
+            print_u64(ata_dbg_status() >> 4);
+            print_u64(ata_dbg_status() & 0xF);
+            term_puts(")\n");
+            return;
+        }
+        if (ata_read(DISK_SCRATCH_LBA, 1, rbuf) != 0) {
+            term_puts("disk test: READ failed (status 0x");
+            print_u64(ata_dbg_status() >> 4);
+            print_u64(ata_dbg_status() & 0xF);
+            term_puts(")\n");
+            return;
+        }
+        for (int i = 0; i < 512; i++)
+            if (rbuf[i] != wbuf[i]) {
+                term_puts("disk test: FAIL at byte ");
+                print_u64((uint64_t)i);
+                term_putc('\n');
+                return;
+            }
+        term_puts("disk test: PASS (512 bytes written + read back)\n");
+        return;
+    }
+    term_puts("DR1: ");
+    term_puts(ata_model());
+    term_putc('\n');
+    term_puts("  sectors: ");
+    print_u64(ata_sectors());
+    term_puts("  (");
+    print_u64(ata_sectors() / 2048);
+    term_puts(" MB)\n");
+    term_puts("  try 'disk test' to prove the metal\n");
 }
 
 static void cmd_about(void)
@@ -424,6 +474,7 @@ void shell_execute(char *cmdline)
             news_fetch(term_active());  // headless: straight to the console
     }
     else if (!strcmp(cmdline, "dev"))    dev_list();
+    else if (!strcmp(cmdline, "disk"))   cmd_disk(arg);
     else if (!strcmp(cmdline, "meminfo")) cmd_meminfo();
     else if (!strcmp(cmdline, "mtest"))  cmd_mtest();
     else if (!strcmp(cmdline, "fire")) {

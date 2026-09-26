@@ -13,7 +13,7 @@ OBJS = obj/boot.o obj/isr.o obj/term.o obj/idt.o obj/timer.o \
        obj/mm.o obj/heap.o obj/font.o obj/gfx.o obj/mouse.o \
        obj/wm.o obj/apps.o obj/ramfs.o obj/files.o obj/path.o obj/js.o obj/ext.o obj/browser.o \
        obj/filemgr.o obj/pci.o obj/e1000.o obj/net.o obj/tcp.o \
-       obj/getspgk.o obj/http.o obj/news.o obj/desktop.o obj/kmain.o
+       obj/getspgk.o obj/http.o obj/news.o obj/desktop.o obj/kmain.o obj/ata.o
 
 all: openos.iso
 
@@ -49,6 +49,13 @@ openos.iso: kernel.bin iso_root/boot/grub/grub.cfg
 
 run: openos.iso
 	qemu-system-x86_64 -cdrom openos.iso
+
+# DR1: a blank 16 MiB drive the OS can write to (survives across boots)
+store.img:
+	dd if=/dev/zero of=store.img bs=1M count=16
+
+runstore: openos.iso store.img
+	qemu-system-x86_64 -cdrom openos.iso -hda store.img
 
 headless: openos.iso
 	qemu-system-x86_64 -cdrom openos.iso -display none -serial stdio -no-reboot

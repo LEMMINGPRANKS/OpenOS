@@ -10,6 +10,7 @@
 // UR1 unsupported-device trap: constantly polled; fires panic when tripped
 
 void dev_list(void);
+void dev_set_present(const char *name, int present);
 void ur1_poll(void);
 int dev_fire(const char *name);
 

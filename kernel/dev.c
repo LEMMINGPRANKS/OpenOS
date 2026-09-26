@@ -36,6 +36,16 @@ static int same_ci(const char *a, const char *b)
     return *a == *b;
 }
 
+// drivers mark their device live at boot (ata_init -> DR1)
+void dev_set_present(const char *name, int present)
+{
+    for (unsigned i = 0; i < NDEVS; i++)
+        if (same_ci(devs[i].name, name)) {
+            devs[i].present = (uint8_t)(present ? 1 : 0);
+            return;
+        }
+}
+
 void dev_list(void)
 {
     devs[4].present = (uint8_t)initrd_ok();   // IR2
