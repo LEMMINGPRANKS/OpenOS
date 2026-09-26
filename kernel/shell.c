@@ -20,6 +20,7 @@
 #include "mm.h"
 #include "heap.h"
 #include "ata.h"
+#include "store.h"
 
 #define LINE_MAX 128
 #define SHELL_STATES 5          // [0] = boot/VGA console, rest = windows
@@ -128,6 +129,7 @@ static void cmd_help(void)
     term_puts("  update        install fresh features from the update server\n");
     term_puts("  dev           show device registers (DR/IR/UR)\n");
     term_puts("  disk          DR1 info ('disk test' writes + reads a sector)\n");
+    term_puts("  save          copy all ramfs files to DR1 (survives reboot)\n");
     term_puts("  fire <dev>    trip a trap device (try: fire UR1)\n");
     term_puts("  meminfo       RAM map, free pages, heap use\n");
     term_puts("  mtest         exercise kmalloc/kfree, prove it works\n");
@@ -159,6 +161,20 @@ static void cmd_uptime(void)
 // DR1: show the main drive, or prove the metal with a write+read round trip
 #define DISK_SCRATCH_LBA 3100          // above the store area (2048..3071)
 
+static void print_dbg(char *tag)
+{
+    term_puts(tag);
+    term_puts(": where ");
+    print_u64(ata_dbg_where());
+    term_puts(" first 0x");
+    print_u64(ata_dbg_first_status() >> 4);
+    print_u64(ata_dbg_first_status() & 0xF);
+    term_puts(" last 0x");
+    print_u64(ata_dbg_status() >> 4);
+    print_u64(ata_dbg_status() & 0xF);
+    term_putc('\n');
+}
+
 static void cmd_disk(char *arg)
 {
     if (!ata_present()) {
@@ -170,17 +186,11 @@ static void cmd_disk(char *arg)
         for (int i = 0; i < 512; i++)
             wbuf[i] = (uint8_t)(i ^ 0x5A);
         if (ata_write(DISK_SCRATCH_LBA, 1, wbuf) != 0) {
-            term_puts("disk test: WRITE failed (status 0x");
-            print_u64(ata_dbg_status() >> 4);
-            print_u64(ata_dbg_status() & 0xF);
-            term_puts(")\n");
+            print_dbg("disk test: WRITE failed");
             return;
         }
         if (ata_read(DISK_SCRATCH_LBA, 1, rbuf) != 0) {
-            term_puts("disk test: READ failed (status 0x");
-            print_u64(ata_dbg_status() >> 4);
-            print_u64(ata_dbg_status() & 0xF);
-            term_puts(")\n");
+            print_dbg("disk test: READ failed");
             return;
         }
         for (int i = 0; i < 512; i++)
@@ -202,6 +212,22 @@ static void cmd_disk(char *arg)
     print_u64(ata_sectors() / 2048);
     term_puts(" MB)\n");
     term_puts("  try 'disk test' to prove the metal\n");
+}
+
+// DR1 persistence: copy every ramfs file onto the disk store
+static void cmd_save(void)
+{
+    int n = store_flush();
+    if (n < 0) {
+        term_puts("save failed (code ");
+        print_u64((uint64_t)-n);
+        term_puts(")\n");
+        return;
+    }
+    term_puts("saved ");
+    print_u64((uint64_t)n);
+    term_puts(n == 1 ? " file to DR1 -- it survives reboot\n"
+                     : " files to DR1 -- they survive reboot\n");
 }
 
 static void cmd_about(void)
@@ -475,6 +501,7 @@ void shell_execute(char *cmdline)
     }
     else if (!strcmp(cmdline, "dev"))    dev_list();
     else if (!strcmp(cmdline, "disk"))   cmd_disk(arg);
+    else if (!strcmp(cmdline, "save"))   cmd_save();
     else if (!strcmp(cmdline, "meminfo")) cmd_meminfo();
     else if (!strcmp(cmdline, "mtest"))  cmd_mtest();
     else if (!strcmp(cmdline, "fire")) {

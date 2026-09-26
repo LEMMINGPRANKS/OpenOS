@@ -32,6 +32,7 @@ static const struct ext_type types[] = {
     { "dmg",  "disc image",          COL_DISC  },
     { "vhd",  "disc image",          COL_DISC  },
     { "tar",  "tar archive",         COL_ARCH  },
+    { "wmbg", "QuantumSquish squished file (WMBG)", COL_ARCH },
     { "gz",   "gzip archive",        COL_ARCH  },
     { "zip",  "zip archive",         COL_ARCH  },
     { "7z",   "7-zip archive",       COL_ARCH  },

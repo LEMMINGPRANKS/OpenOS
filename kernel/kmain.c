@@ -9,6 +9,7 @@
 #include "ramfs.h"
 #include "desktop.h"
 #include "ata.h"
+#include "store.h"
 #include "version.h"
 
 #define MB2_BOOT_MAGIC 0x36D76289
@@ -40,5 +41,9 @@ void kmain(unsigned long magic, unsigned long addr)
         term_puts("   warning: multiboot2 magic check FAILED\n");
 
     ramfs_init();
+    int restored = store_load();        // DR1: files saved last time come back
+    if (restored > 0)
+        term_puts("   DR1 store: files restored from disk\n");
+
     desktop_run();                     // boots into desktop (or plain shell)
 }

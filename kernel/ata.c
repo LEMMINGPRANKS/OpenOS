@@ -1,5 +1,6 @@
 #include "ata.h"
 #include "dev.h"
+#include "timer.h"
 
 // DR1: ATA PIO driver, primary bus, polling. Real metal: ports 0x1F0-0x1F7,
 // alternate status at 0x3F6. We speak LBA28 (up to 128 GiB drives).
@@ -32,8 +33,12 @@ static int present;
 static char model[41];
 static uint64_t sectors28;
 static uint8_t last_status;            // last alternate-status byte seen
+static uint8_t first_status;           // first status seen after last cmd
+static uint8_t fail_where;             // 1 drq 2 post-data busy 3 flush busy
 
 uint8_t ata_dbg_status(void) { return last_status; }
+uint8_t ata_dbg_first_status(void) { return first_status; }
+uint8_t ata_dbg_where(void) { return fail_where; }
 
 static void outb(uint16_t port, uint8_t val)
 {
@@ -72,35 +77,55 @@ static void wait_400ns(void)
         (void)inb(ATA_ALT_STATUS);
 }
 
-static int wait_not_busy(void)
+// Poll counts are a lie on emulators: the host's fsync (FLUSH CACHE) can
+// take far longer than a fixed spin count. Waits are time-based instead.
+#define WAIT_DRQ_MS     1000
+#define WAIT_BUSY_MS    2000
+#define WAIT_FLUSH_MS   10000
+
+static int wait_not_busy_ms(uint32_t timeout_ms)
 {
-    for (int i = 0; i < 100000; i++) {
+    uint64_t deadline = timer_uptime_ms() + timeout_ms;
+    for (;;) {
         uint8_t st = inb(ATA_ALT_STATUS);
         last_status = st;
         if (!(st & ST_BSY))
             return (st & (ST_ERR | ST_DF)) ? -1 : 0;
+        if (timer_uptime_ms() >= deadline)
+            return -1;
     }
-    return -1;
 }
 
 static int wait_drq(void)
 {
-    for (int i = 0; i < 100000; i++) {
+    uint64_t deadline = timer_uptime_ms() + WAIT_DRQ_MS;
+    for (int i = 0; ; i++) {
         uint8_t st = inb(ATA_ALT_STATUS);
+        if (i == 0)
+            first_status = st;
         last_status = st;
-        if (st & ST_BSY)
-            continue;
+        if (st & ST_DRQ)
+            return 0;                   // data ready -- even if BSY set
         if (st & (ST_ERR | ST_DF))
             return -1;
-        if (st & ST_DRQ)
-            return 0;
+        if (timer_uptime_ms() >= deadline)
+            return -1;
     }
-    return -1;
 }
 
 static void select_master(uint8_t lba_hi_bits)
 {
     outb(ATA_DRIVE, (uint8_t)(ATA_DRV_MASTER | lba_hi_bits));
+}
+
+// Polling law: keep the bus IRQ line off (nIEN) and read the main status
+// register once to clear any interrupt left over from the last command --
+// else the first write after an idle gap gets aborted.
+static void ata_begin_cmd(void)
+{
+    outb(ATA_CONTROL, 0x02);           // nIEN: no IRQ14 from this bus
+    (void)inb(ATA_STATUS);             // clear INTRQ latch
+    wait_not_busy_ms(100);
 }
 
 int ata_init(void)
@@ -150,7 +175,7 @@ int ata_read(uint32_t lba, uint32_t nsect, void *buf)
         return -1;
     uint8_t count8 = nsect == 256 ? 0 : (uint8_t)nsect;
     select_master((uint8_t)((lba >> 24) & 0x0F));
-    wait_400ns();
+    ata_begin_cmd();
     outb(ATA_SECCOUNT, count8);
     outb(ATA_LBA_LO, (uint8_t)(lba & 0xFF));
     outb(ATA_LBA_MID, (uint8_t)((lba >> 8) & 0xFF));
@@ -163,7 +188,7 @@ int ata_read(uint32_t lba, uint32_t nsect, void *buf)
         insw(ATA_DATA, p, 256);
         p += 256;
     }
-    return wait_not_busy();
+    return wait_not_busy_ms(WAIT_BUSY_MS);
 }
 
 int ata_write(uint32_t lba, uint32_t nsect, const void *buf)
@@ -172,7 +197,7 @@ int ata_write(uint32_t lba, uint32_t nsect, const void *buf)
         return -1;
     uint8_t count8 = nsect == 256 ? 0 : (uint8_t)nsect;
     select_master((uint8_t)((lba >> 24) & 0x0F));
-    wait_400ns();
+    ata_begin_cmd();
     outb(ATA_SECCOUNT, count8);
     outb(ATA_LBA_LO, (uint8_t)(lba & 0xFF));
     outb(ATA_LBA_MID, (uint8_t)((lba >> 8) & 0xFF));
@@ -180,13 +205,21 @@ int ata_write(uint32_t lba, uint32_t nsect, const void *buf)
     outb(ATA_CMD, CMD_WRITE);
     const uint16_t *p = (const uint16_t *)buf;
     for (uint32_t s = 0; s < nsect; s++) {
-        if (wait_drq() != 0)
+        if (wait_drq() != 0) {
+            fail_where = 1;
             return -1;
+        }
         outsw(ATA_DATA, p, 256);
         p += 256;
     }
-    if (wait_not_busy() != 0)
+    if (wait_not_busy_ms(WAIT_BUSY_MS) != 0) {
+        fail_where = 2;
         return -1;
+    }
     outb(ATA_CMD, CMD_FLUSH);
-    return wait_not_busy();
+    if (wait_not_busy_ms(WAIT_FLUSH_MS) != 0) {
+        fail_where = 3;
+        return -1;
+    }
+    return 0;
 }

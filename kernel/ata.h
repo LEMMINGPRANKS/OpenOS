@@ -13,5 +13,7 @@ uint64_t    ata_sectors(void);                    // LBA28 sector count
 int         ata_read(uint32_t lba, uint32_t nsect, void *buf);   // 0 = ok
 int         ata_write(uint32_t lba, uint32_t nsect, const void *buf);
 uint8_t     ata_dbg_status(void);   // last status byte (debugging)
+uint8_t     ata_dbg_first_status(void);
+uint8_t     ata_dbg_where(void);    // 1 drq 2 post-data 3 flush
 
 #endif
