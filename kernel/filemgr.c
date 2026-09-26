@@ -3,13 +3,10 @@
 #include "ext.h"
 #include "term.h"
 #include "kb.h"
-#include "wm.h"
 #include "apps.h"
 #include "path.h"
 
 #define FM_STATES 2
-#define VIEW_WIN_W 448
-#define VIEW_WIN_H 340
 
 struct fm_state {
     struct console *con;
@@ -141,17 +138,48 @@ static void open_selected(struct fm_state *st)
         fm_render(st);
         return;
     }
-    if (!ext_is_text(f->name)) {
+    char full[PATH_MAX];
+    selected_path(st, full);
+    if (open_file_window(full) != 0) {
         fm_render(st);
         term_setcolor(0x0E);
         term_puts("\n  no viewer for this type yet (binary?)\n");
         term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
-        return;
     }
-    char full[PATH_MAX];
-    selected_path(st, full);
-    app_set_arg(full);
-    wm_open(APP_VIEWER, 110, 80, VIEW_WIN_W, VIEW_WIN_H);
+    // open_file_window's wm_open repaints in the right order (the new
+    // window is focused = painted last), so no redraw here
+}
+
+// mouse support: click selects, double-click opens. rows: 0 = header,
+// 1 = blank, then ".." (if shown) and the entries.
+void filemgr_click(struct console *con, int mx, int my, int dbl)
+{
+    struct fm_state *st = fm_for(con);
+    int col, row;
+    if (!term_locate(con, mx, my, &col, &row) || row < 2)
+        return;
+    term_use(con);
+    int idx = row - 2;
+    if (st->has_parent) {
+        if (idx == 0) {
+            st->sel = -1;
+            if (!dbl)
+                fm_render(st);
+            else
+                open_selected(st);
+            return;
+        }
+        idx--;
+    }
+    if (idx >= st->count)
+        return;
+    if (st->sel != idx || !dbl) {
+        st->sel = idx;
+        if (!dbl)
+            fm_render(st);
+    }
+    if (dbl)
+        open_selected(st);
 }
 
 void filemgr_input(struct console *con, char c)

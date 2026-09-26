@@ -1,6 +1,7 @@
 #include "wm.h"
 #include "term.h"
 #include "gfx.h"
+#include "timer.h"
 
 // The window manager. Owns the window table, draws chrome (title bar +
 // close box), handles focus, drag, and routes keyboard to the focused app.
@@ -150,7 +151,9 @@ void wm_key(char c)
     app_input(wins[focus].app, wins[focus].con, c);
 }
 
-void wm_mouse(int mx, int my, uint8_t buttons)
+// returns 1 if the click landed on a window (so callers can fall back to
+// their own hit-testing, e.g. desktop icons)
+int wm_mouse(int mx, int my, uint8_t buttons)
 {
     int left = buttons & 1;
     int32_t sw = (int32_t)gfx_width();
@@ -174,7 +177,7 @@ void wm_mouse(int mx, int my, uint8_t buttons)
                 repaint_all();
         }
         prev_left = (uint8_t)left;
-        return;
+        return 1;                     // a window owns the pointer mid-drag
     }
 
     if (left && !prev_left) {         // fresh press
@@ -198,9 +201,20 @@ void wm_mouse(int mx, int my, uint8_t buttons)
                     drag_win = hit;
                     drag_dx = mx - (int)w->x;
                     drag_dy = my - (int)w->y;
+                } else {              // click inside the app body
+                    static uint64_t last_ms;
+                    static int last_win = -1;
+                    uint64_t now = timer_uptime_ms();
+                    int dbl = hit == last_win && now - last_ms < 400;
+                    last_ms = now;
+                    last_win = hit;
+                    app_click(w->app, w->con, mx, my, dbl);
                 }
             }
+            prev_left = (uint8_t)left;
+            return 1;
         }
     }
     prev_left = (uint8_t)left;
+    return 0;
 }

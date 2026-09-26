@@ -21,6 +21,6 @@ int  wm_any_open(void);
 int  wm_focused_app(void);                  // -1 if none
 void wm_paint_all(void);                    // bg already painted by desktop
 void wm_key(char c);                        // ESC closes focused, else route
-void wm_mouse(int mx, int my, uint8_t buttons);
+int  wm_mouse(int mx, int my, uint8_t buttons); // 1 = a window took the click
 
 #endif

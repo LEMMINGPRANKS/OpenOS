@@ -144,6 +144,21 @@ void term_move(struct console *c, uint32_t px, uint32_t py)
     c->vy = py;
 }
 
+int term_locate(struct console *c, int mx, int my, int *col, int *row)
+{
+    if (!c)
+        return 0;
+    if (mx < (int)c->vx || my < (int)c->vy)
+        return 0;
+    int cc = (mx - (int)c->vx) / FONT_W;
+    int rr = (my - (int)c->vy) / FONT_H;
+    if (cc >= c->cols || rr >= c->rows)
+        return 0;
+    *col = cc;
+    *row = rr;
+    return 1;
+}
+
 // --- scrolling + putc ----------------------------------------------------
 
 static void scroll(struct console *c)

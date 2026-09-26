@@ -8,6 +8,8 @@
 #include "wm.h"
 #include "apps.h"
 #include "shell.h"
+#include "files.h"
+#include "path.h"
 
 // The desktop OpenOS boots into: wallpaper, taskbar with app launchers
 // and a live clock, and windows managed by wm.c.
@@ -34,6 +36,21 @@
 #define NOTE_WIN_H  300
 #define CASCADE_STEP 24
 #define CASCADE_MAX  6
+
+// desktop icons (top-level files, double-click to open)
+#define ICON_X      12
+#define ICON_Y0     96
+#define ICON_STEP   56               // box + label + gap
+#define ICON_SZ     32
+#define ICON_MAX    8
+#define ICON_COL      0x1B2F66
+#define ICON_COL_SEL  0x3050C8
+#define ICON_BORDER   0x3A5FCD
+#define ICON_LABEL    0xFFFFFF
+
+static struct fileinfo icon_files[ICON_MAX];
+static int icon_count;
+static int icon_sel = -1;
 
 static const unsigned char arrow[CURSOR_H] = {
     0x80, 0xC0, 0xE0, 0xF0, 0xF8, 0xFC, 0xFE, 0xFF,
@@ -88,12 +105,32 @@ static void taskbar(void)
     gfx_text(w - 8 * FONT_W - 14, y + TB_BTN_Y + 2, clock, 0xFFFFFF, 0x181818);
 }
 
-// full repaint: wallpaper, windows on top, taskbar above them
+static void draw_icons(void)
+{
+    icon_count = files_list_dir("/", icon_files, ICON_MAX);
+    for (int i = 0; i < icon_count; i++) {
+        uint32_t y = (uint32_t)(ICON_Y0 + i * ICON_STEP);
+        int sel = i == icon_sel;
+        gfx_fill_rect(ICON_X, y, ICON_SZ, ICON_SZ,
+                      sel ? ICON_COL_SEL : ICON_COL);
+        gfx_rect(ICON_X, y, ICON_SZ, ICON_SZ, sel ? ICON_LABEL : ICON_BORDER);
+        const char *nm = icon_files[i].name;
+        char glyph[2] = { icon_files[i].is_dir ? '/' : (nm[0] ? nm[0] : '?'), 0 };
+        gfx_text(ICON_X + (ICON_SZ - FONT_W) / 2, y + (ICON_SZ - FONT_H) / 2,
+                 glyph, ICON_LABEL, sel ? ICON_COL_SEL : ICON_COL);
+        gfx_text_fg(ICON_X, y + ICON_SZ + 2, nm, ICON_LABEL);
+        if (icon_files[i].is_dir)
+            gfx_text_fg(ICON_X + 8 * FONT_W + 2, y + ICON_SZ + 2, "/", ICON_LABEL);
+    }
+}
+
+// full repaint: wallpaper, icons, windows on top, taskbar above them
 void desktop_repaint(void)
 {
     if (!gfx_available())
         return;
     wallpaper();
+    draw_icons();
     wm_paint_all();
     taskbar();
 }
@@ -148,6 +185,45 @@ static void taskbar_click(int mx, int my)
         wm_open(APP_FILES, wx, wy, NOTE_WIN_W, NOTE_WIN_H);
 }
 
+static int icon_at(int mx, int my)
+{
+    if (mx < ICON_X || mx >= ICON_X + ICON_SZ + 8 * FONT_W)
+        return -1;
+    for (int i = 0; i < icon_count; i++) {
+        int y = ICON_Y0 + i * ICON_STEP;
+        if (my >= y && my < y + ICON_SZ + 2 + FONT_H)
+            return i;
+    }
+    return -1;
+}
+
+static void icon_click(int mx, int my)
+{
+    int hit = icon_at(mx, my);
+    if (hit < 0)
+        return;
+    static uint64_t last_ms;
+    static int last_icon = -1;
+    uint64_t now = timer_uptime_ms();
+    int dbl = hit == last_icon && now - last_ms < 400;
+    last_ms = now;
+    last_icon = hit;
+    if (dbl) {
+        icon_sel = -1;
+        struct fileinfo *f = &icon_files[hit];
+        if (f->is_dir) {
+            wm_open(APP_FILES, 60, 40, NOTE_WIN_W, NOTE_WIN_H);
+            return;
+        }
+        char full[PATH_MAX];
+        path_resolve("/", f->name, full);
+        open_file_window(full);
+        return;
+    }
+    icon_sel = hit;
+    desktop_repaint();
+}
+
 void desktop_run(void)
 {
     if (!gfx_available()) {
@@ -175,7 +251,12 @@ void desktop_run(void)
         if (btn != prev_btn) {        // fresh press or release
             if ((btn & 1) && my >= (int32_t)(gfx_height() - TASKBAR_H)) {
                 taskbar_click(mx, my);
-            } else {
+            } else if (btn & 1) {     // fresh press outside the taskbar
+                cursor_hide();
+                if (!wm_mouse(mx, my, btn))
+                    icon_click(mx, my);   // no window took it: try icons
+                cursor_show(mx, my);
+            } else {                  // release: let the wm finish drags
                 cursor_hide();
                 wm_mouse(mx, my, btn);
                 cursor_show(mx, my);

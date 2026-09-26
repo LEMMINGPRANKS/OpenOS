@@ -16,6 +16,7 @@ void term_close(struct console *con);
 void term_use(struct console *con);        // make active + full redraw
 void term_render(struct console *con);     // redraw just this console
 void term_move(struct console *con, uint32_t px, uint32_t py); // drag support
+int term_locate(struct console *con, int mx, int my, int *col, int *row);
 
 void term_putc(char c);
 void term_puts(const char *s);
