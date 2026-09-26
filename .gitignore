@@ -4,3 +4,7 @@ iso_root/
 kernel.bin
 *.o
 initrd.tar
+kernel.flat
+openos.img
+store.img
+bios/*.bin

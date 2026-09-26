@@ -47,6 +47,38 @@ initrd.tar: $(INITRD_FILES)
 openos.iso: kernel.bin iso_root/boot/grub/grub.cfg
 	grub-mkrescue -o openos.iso iso_root
 
+# --- OpenBIOS: our own bootloader, no GRUB ---------------------------------
+
+kernel.flat: kernel.bin
+	objcopy -O binary kernel.bin kernel.flat
+
+bios/mbr.bin: bios/mbr.asm bios/layout.inc
+	$(AS) -f bin -I bios/ -o $@ bios/mbr.asm
+
+bios/stage2.bin: bios/stage2.asm bios/layout.inc kernel.flat initrd.tar
+	$(AS) -f bin -I bios/ -o $@ bios/stage2.asm \
+	    -D ENTRY_OFF=$(shell printf '%d' $$(( $$(nm kernel.bin | awk '/ T _start$$/ {print "0x"$$1}') - 0x100000 ))) \
+	    -D KERNEL_SECTORS=$(shell echo $$(( ($$(stat -c%s kernel.flat) + 511) / 512 ))) \
+	    -D INITRD_SECTORS=$(shell echo $$(( ($$(stat -c%s initrd.tar) + 511) / 512 ))) \
+	    -D INITRD_BYTES=$(shell stat -c%s initrd.tar) \
+	    -D BSS_END_OFF=$(shell printf '%d' $$(( $$(nm kernel.bin | awk '/ B __kernel_end$$/ {print "0x"$$1}') - 0x100000 )))
+
+openos.img: bios/mbr.bin bios/stage2.bin kernel.flat initrd.tar
+	dd if=/dev/zero of=openos.img bs=1M count=16 status=none
+	dd if=bios/mbr.bin    of=openos.img                    conv=notrunc status=none
+	dd if=bios/stage2.bin of=openos.img bs=512 seek=1      conv=notrunc status=none
+	dd if=kernel.flat     of=openos.img bs=512 seek=128    conv=notrunc status=none
+	dd if=initrd.tar      of=openos.img bs=512 seek=1152   conv=notrunc status=none
+	test $$(stat -c%s kernel.flat) -le $$(( 512 * 1024 ))
+	test $$(stat -c%s initrd.tar) -le $$(( 448 * 1024 ))
+
+imgrun: openos.img store.img
+	qemu-system-x86_64 -drive file=openos.img,format=raw,if=ide,index=0,media=disk
+
+imgheadless: openos.img store.img
+	qemu-system-x86_64 -drive file=openos.img,format=raw,if=ide,index=0,media=disk \
+	    -display none -no-reboot -serial stdio
+
 run: openos.iso
 	qemu-system-x86_64 -cdrom openos.iso
 
@@ -61,6 +93,6 @@ headless: openos.iso
 	qemu-system-x86_64 -cdrom openos.iso -display none -serial stdio -no-reboot
 
 clean:
-	rm -rf obj iso_root kernel.bin openos.iso
+	rm -rf obj iso_root kernel.bin openos.iso openos.img kernel.flat bios/*.bin
 
-.PHONY: all run headless clean
+.PHONY: all run headless clean imgrun imgheadless
