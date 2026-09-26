@@ -63,14 +63,21 @@ Never invent other naming schemes. New devices join these registers.
 
 ## Roadmap
 
-- **v1.0.2** (BDFL decree, 2026-09-26):
-  - Double-clicky executable files in the Files app / desktop
-  - HTML support + a web browser **demo** (the full browser is v1.1.0)
-  - News app: uses our TCP stack to fetch the latest software updates
-  - System updates over our own TCP stack — no GitHub needed ever again
+- **v1.0.2** (BDFL decree, 2026-09-26) — **DONE**:
+  - Directories in the filesystem: `cd`, `pwd`, folders in Files app
+    (kernel/path.c + files_list_dir; implicit dirs, ramfs + IR2 merged)
+  - OpenJS: a from-scratch JavaScript interpreter in the kernel (js.c —
+    lexer, Pratt parser, tree-walking evaluator) + `run <file.js>`
+  - Double-clicky executable files: Files app rows and desktop icons;
+    .js runs, .html browses, text views, dirs open Files
+  - HTML support + browser demo (browser.c — tag-aware text renderer;
+    Browser window; .html in the extension registry)
+  - News app: taskbar News button / `news` command fetches /news from
+    the spgk server over our own TCP + DHCP + e1000 stack and renders
+    it as HTML. HTTP client extracted to kernel/http.c for all apps.
 - **v1.1.0**: full from-scratch web browser (DNS -> HTTP -> HTML subset ->
   WM window; Electron is impossible — it needs a host OS underneath) +
-  directories in the filesystem (`cd`, `pwd`, folders in Files app)
+  system updates delivered as spgk packages over the same stack
 
 ## Build & run
 
@@ -105,13 +112,19 @@ kernel/apps.c/.h   # app dispatch (Shell, Notepad)
 kernel/ramfs.c/.h  # writable RAM filesystem (kmalloc-backed)
 kernel/ext.c/.h    # file extension registry (type names + VGA colours)
 kernel/files.c/.h  # unified file index over ramfs + IR2
-kernel/filemgr.c/.h # Files app: keyboard-driven file browser
+kernel/path.c/.h   # path helpers: resolve, parent, basename
+kernel/js.c/.h     # OpenJS: JavaScript interpreter (lexer+parser+eval)
+kernel/browser.c/.h # HTML renderer (tag-aware text, colours, links)
+kernel/http.c/.h   # shared HTTP client (used by getspgk + news)
+kernel/news.c/.h   # News app: fetches /news and renders it
+kernel/filemgr.c/.h # Files app: keyboard + mouse file browser
 kernel/pci.c/.h    # PCI config-space scan, BAR decode
 kernel/e1000.c/.h  # Intel e1000 NIC driver (polling, legacy descriptors)
 kernel/net.c/.h    # ETH/ARP/IPv4/UDP + DHCP client
 kernel/tcp.c/.h    # minimal TCP client (connect/send/recv/close)
 kernel/getspgk.c/.h # getspgk command: package downloader
-tools/spgk-server.py # host-side package server (10.0.2.2:8080)
+tools/spgk-server.py # host-side package server (10.0.2.2:8080, /index,
+                     # /news from packages/news.html)
 kernel/dev.c/.h    # DR/IR/UR device registers + UR1 watchdog
 kernel/panic.c/.h  # kpanic: red screen, halt on purpose
 initrd/            # files packed into initrd.tar (the filesystem!)

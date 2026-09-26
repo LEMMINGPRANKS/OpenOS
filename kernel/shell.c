@@ -152,14 +152,14 @@ static void cmd_uptime(void)
 
 static void cmd_about(void)
 {
-    term_puts("OpenOS 1.0.1 -- a 64-bit open-source OS from scratch.\n");
+    term_puts("OpenOS 1.0.2 -- a 64-bit open-source OS from scratch.\n");
     term_puts("BDFL: Freddie. Kernel + shell + desktop + files + network (getspgk).\n");
 }
 
 static void cmd_banner(void)
 {
     term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
-    term_puts("\n   OpenOS 1.0.1   desktop + getspgk edition\n\n");
+    term_puts("\n   OpenOS 1.0.2   cd + OpenJS + double-click + browser + news edition\n\n");
 }
 
 static void print_hex(uint64_t v)
