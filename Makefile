@@ -72,14 +72,19 @@ openos.img: bios/mbr.bin bios/stage2.bin kernel.flat initrd.tar
 	test $$(stat -c%s kernel.flat) -le $$(( 512 * 1024 ))
 	test $$(stat -c%s initrd.tar) -le $$(( 448 * 1024 ))
 
-imgrun: openos.img store.img
+imgrun: openos.img
 	qemu-system-x86_64 -drive file=openos.img,format=raw,if=ide,index=0,media=disk
 
-imgheadless: openos.img store.img
+imgheadless: openos.img
 	qemu-system-x86_64 -drive file=openos.img,format=raw,if=ide,index=0,media=disk \
 	    -display none -no-reboot -serial stdio
 
-run: openos.iso
+# the real thing: boot OUR bootloader, no GRUB anywhere
+run: openos.img
+	qemu-system-x86_64 -drive file=openos.img,format=raw,if=ide,index=0,media=disk
+
+# GRUB fallback for comparison
+isorun: openos.iso
 	qemu-system-x86_64 -cdrom openos.iso
 
 # DR1: a blank 16 MiB drive the OS can write to (survives across boots)
@@ -95,4 +100,4 @@ headless: openos.iso
 clean:
 	rm -rf obj iso_root kernel.bin openos.iso openos.img kernel.flat bios/*.bin
 
-.PHONY: all run headless clean imgrun imgheadless
+.PHONY: all run headless clean imgrun imgheadless isorun

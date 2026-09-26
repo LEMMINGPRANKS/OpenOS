@@ -80,16 +80,37 @@ Never invent other naming schemes. New devices join these registers.
     reboot); the Browser can also browse to `10.0.2.2:8080/updates` and
     click a feature link to install just that one. Server /version says
     which feature pack is out; kernel/version.h holds OS_VERSION.
-- **v1.1.0**: full from-scratch web browser (DNS -> HTTP -> HTML subset ->
-  WM window; Electron is impossible — it needs a host OS underneath) +
-  system updates delivered as spgk packages over the same stack
+- **v1.1.0** (BDFL decree, 2026-09-26) — **DONE**:
+  - DR1: ATA PIO driver (kernel/ata.c) — IDENTIFY, LBA28 read/write with
+    time-based BSY/DRQ waits (FLUSH CACHE in QEMU is a host fsync: it can
+    outrun any fixed poll count), `disk` + `disk test` commands
+  - DR1 store (kernel/store.c): files that survive power-off. Superblock
+    "OPENOSST" at LBA 2048, file table, each file stored as its own
+    QuantumSquish `.WMBG` archive (Freddie's format, method 0 = STORE).
+    `save` flushes ramfs to DR1; boot restores. Updater + Browser installs
+    auto-flush, so installed features survive a cold no-network reboot
+  - **OpenBIOS** (bios/mbr.asm + bios/stage2.asm): our own bootloader,
+    GRUB retired to `make isorun`. MBR -> stage2 (E820, A20, loads kernel
+    + initrd, protected mode, copies them home, zeroes bss, builds a fake
+    multiboot2 info block) -> kernel, unmodified. VBE 2.0 scan picks
+    800x600x32 (24 fallback, serial-shell fallback after that) and writes
+    the framebuffer tag, so `make run` boots the FULL desktop from our
+    own 512-byte MBR. Real hardware: `dd openos.img` onto a USB stick ->
+    boots any BIOS PC.
+  - The disk-layout law (bios/layout.inc, ONE law for MBR/stage2/Makefile):
+    LBA 0 MBR, 1-127 stage2, 128-1151 kernel.flat, 1152-2047 initrd.tar,
+    2048-3071 DR1 store (superblock + table + WMBG files)
+- **next**: full from-scratch web browser (DNS -> HTTP -> HTML subset ->
+  WM window; Electron is impossible — it needs a host OS underneath)
 
 ## Build & run
 
 ```
-make            # build kernel.bin + openos.iso
-make run        # boot it in QEMU (window)
-make headless   # boot with no window, output on stdout (serial)
+make            # build kernel.bin + openos.iso (GRUB fallback)
+make run        # build + boot openos.img through OUR OpenBIOS bootloader
+make isorun     # boot the GRUB iso (for comparison)
+make headless   # GRUB iso, no window, serial on stdout
+make imgheadless# OpenBIOS img, no window, serial on stdout
 ```
 
 Needs: gcc, nasm, ld, grub-mkrescue, xorriso, qemu-system-x86_64.
@@ -133,8 +154,14 @@ tools/spgk-server.py # host-side package server (10.0.2.2:8080, /index,
                      # /news from packages/news.html)
 kernel/dev.c/.h    # DR/IR/UR device registers + UR1 watchdog
 kernel/panic.c/.h  # kpanic: red screen, halt on purpose
+kernel/ata.c/.h    # DR1: ATA PIO driver (IDENTIFY, LBA28 read/write)
+kernel/tar.c/.h    # shared ustar walker (initrd + store)
+kernel/store.c/.h  # DR1 store: OPENOSST superblock + per-file WMBG archives
+bios/layout.inc    # the disk-layout law (LBAs + load addresses, ONE source)
+bios/mbr.asm       # OpenBIOS stage 1: the first 512 bytes of the drive
+bios/stage2.asm    # OpenBIOS stage 2: E820, A20, VBE, fake multiboot2, kernel
 initrd/            # files packed into initrd.tar (the filesystem!)
-grub/grub.cfg      # GRUB menu for the ISO
+grub/grub.cfg      # GRUB menu for the fallback ISO
 linker.ld          # links everything at 1 MiB
 ```
 

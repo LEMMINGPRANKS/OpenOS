@@ -75,7 +75,7 @@ static void wallpaper(void)
         gfx_fill_rect(0, y, w, 1, (r << 16) | (g << 8) | b);
     }
     gfx_text_fg(24, 28, "OpenOS", 0x2A3C5E);
-    gfx_text_fg(24, 28 + FONT_H + 4, "1.0.2 desktop", 0x2A3C5E);
+    gfx_text_fg(24, 28 + FONT_H + 4, "1.1.0 desktop", 0x2A3C5E);
 }
 
 static void taskbar(void)
