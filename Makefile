@@ -11,7 +11,7 @@ LDFLAGS = -nostdlib -static --build-id=none -z noexecstack -T linker.ld
 OBJS = obj/boot.o obj/isr.o obj/term.o obj/idt.o obj/timer.o \
        obj/kb.o obj/shell.o obj/initrd.o obj/dev.o obj/panic.o \
        obj/mm.o obj/heap.o obj/font.o obj/gfx.o obj/mouse.o \
-       obj/wm.o obj/apps.o obj/ramfs.o obj/files.o obj/ext.o \
+       obj/wm.o obj/apps.o obj/ramfs.o obj/files.o obj/path.o obj/ext.o \
        obj/filemgr.o obj/pci.o obj/e1000.o obj/net.o obj/tcp.o \
        obj/getspgk.o obj/desktop.o obj/kmain.o
 
@@ -39,7 +39,9 @@ iso_root/boot/grub/grub.cfg: grub/grub.cfg kernel.bin initrd.tar
 	cp kernel.bin iso_root/boot/kernel.bin
 	cp initrd.tar iso_root/boot/initrd.tar
 
-initrd.tar: $(wildcard initrd/*)
+INITRD_FILES := $(shell find initrd -type f)
+
+initrd.tar: $(INITRD_FILES)
 	tar -cf initrd.tar -C initrd .
 
 openos.iso: kernel.bin iso_root/boot/grub/grub.cfg

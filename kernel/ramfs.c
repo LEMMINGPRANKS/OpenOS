@@ -1,6 +1,5 @@
 #include "ramfs.h"
 #include "heap.h"
-#include "term.h"
 
 struct ramfile {
     char name[RAMFS_NAME_MAX];
@@ -75,24 +74,6 @@ const char *ramfs_read(const char *name, uint32_t *size)
             }
         }
     return 0;
-}
-
-void ramfs_list(void)
-{
-    for (int i = 0; i < RAMFS_MAX_FILES; i++)
-        if (files[i].used) {
-            term_puts("  ");
-            term_puts(files[i].name);
-            term_puts("  (ramfs, ");
-            // small sizes only; print digits directly
-            char digits[12];
-            int n = 0;
-            uint32_t s = files[i].size;
-            if (!s) digits[n++] = '0';
-            while (s) { digits[n++] = (char)('0' + s % 10); s /= 10; }
-            while (n) term_putc(digits[--n]);
-            term_puts(" bytes)\n");
-        }
 }
 
 int ramfs_enum(int idx, const char **name, uint32_t *size)

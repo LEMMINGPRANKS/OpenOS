@@ -86,7 +86,7 @@ static void notepad_open(struct console *con)
     term_use(con);
     term_puts("NOTEPAD -- typing is saved to note.txt\n");
     term_puts("(the shell can read it: cat note.txt)\n\n");
-    ramfs_write("note.txt", "", 0);
+    ramfs_write("/note.txt", "", 0);
 }
 
 static void notepad_input(struct console *con, char c)
@@ -108,7 +108,7 @@ static void notepad_input(struct console *con, char c)
         return;                       // unchanged: no save needed
     }
     st->buf[st->n] = 0;
-    ramfs_write("note.txt", st->buf, (uint32_t)st->n);
+    ramfs_write("/note.txt", st->buf, (uint32_t)st->n);
 }
 
 void app_open(enum app_id app, struct console *con)

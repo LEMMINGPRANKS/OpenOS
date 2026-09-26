@@ -5,6 +5,7 @@
 #include "kb.h"
 #include "wm.h"
 #include "apps.h"
+#include "path.h"
 
 #define FM_STATES 2
 #define VIEW_WIN_W 448
@@ -13,8 +14,10 @@
 struct fm_state {
     struct console *con;
     uint8_t used;
+    char cwd[PATH_MAX];
     int sel;
-    int count;
+    int count;                      // entries below the ".." row (if shown)
+    int has_parent;                 // 1 when ".." row is drawn
     struct fileinfo files[FILES_MAX];
 };
 
@@ -29,6 +32,7 @@ static struct fm_state *fm_for(struct console *con)
         if (!fms[i].used) {
             fms[i].used = 1;
             fms[i].con = con;
+            fms[i].cwd[0] = '/'; fms[i].cwd[1] = 0;
             fms[i].sel = 0;
             fms[i].count = 0;
             return &fms[i];
@@ -47,7 +51,8 @@ static void print_u32(uint32_t v)
 
 static void fm_refresh(struct fm_state *st)
 {
-    st->count = files_list(st->files, FILES_MAX);
+    st->count = files_list_dir(st->cwd, st->files, FILES_MAX);
+    st->has_parent = !(st->cwd[0] == '/' && !st->cwd[1]);
     if (st->sel >= st->count)
         st->sel = st->count ? st->count - 1 : 0;
 }
@@ -57,25 +62,35 @@ static void fm_render(struct fm_state *st)
     term_use(st->con);
     term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
     term_clear();
-    term_puts("FILES  (up/down arrows, Enter opens, r refreshes)\n\n");
+    term_puts("FILES  ");
+    term_puts(st->cwd);
+    term_puts("  (arrows move, Enter opens, backspace up)\n\n");
+    if (st->has_parent) {
+        term_setcolor(TERM_COLOR_DIR);
+        term_puts(st->sel == -1 ? " > ..\n" : "   ..\n");
+        term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
+    }
     if (!st->count) {
-        term_puts("  no files found\n");
+        term_puts("  (empty)\n");
         return;
     }
     for (int i = 0; i < st->count; i++) {
         struct fileinfo *f = &st->files[i];
-        const struct ext_type *t = ext_lookup(f->name);
         term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
         term_puts(i == st->sel ? " > " : "   ");
-        term_setcolor(t->vga_color);
+        if (f->is_dir) {
+            term_setcolor(TERM_COLOR_DIR);
+            term_puts(f->name);
+            term_puts("/\n");
+            continue;
+        }
+        term_setcolor(ext_lookup(f->name)->vga_color);
         term_puts(f->name);
         term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
         term_puts("  [");
         term_puts(f->source == FS_RAMFS ? "ramfs" : "IR2");
         term_puts("] ");
         print_u32(f->size);
-        term_puts("b  ");
-        term_puts(t->desc);
         term_putc('\n');
     }
 }
@@ -87,33 +102,72 @@ void filemgr_open(struct console *con)
     fm_render(st);
 }
 
+// full path of the selected entry (works for ".." too)
+static void selected_path(struct fm_state *st, char *out)
+{
+    if (st->has_parent && st->sel == -1) {
+        path_parent(st->cwd, out);
+        return;
+    }
+    path_resolve(st->cwd, st->files[st->sel].name, out);
+}
+
 static void open_selected(struct fm_state *st)
 {
+    if (st->has_parent && st->sel == -1) {      // ".."
+        char up[PATH_MAX];
+        path_parent(st->cwd, up);
+        for (int i = 0; i < PATH_MAX; i++) {
+            st->cwd[i] = up[i];
+            if (!up[i]) break;
+        }
+        st->sel = 0;
+        fm_refresh(st);
+        fm_render(st);
+        return;
+    }
     if (!st->count)
         return;
     struct fileinfo *f = &st->files[st->sel];
+    if (f->is_dir) {
+        char full[PATH_MAX];
+        path_resolve(st->cwd, f->name, full);
+        for (int i = 0; i < PATH_MAX; i++) {
+            st->cwd[i] = full[i];
+            if (!full[i]) break;
+        }
+        st->sel = 0;
+        fm_refresh(st);
+        fm_render(st);
+        return;
+    }
     if (!ext_is_text(f->name)) {
-        fm_render(st);               // redraw, then complain below list
+        fm_render(st);
         term_setcolor(0x0E);
         term_puts("\n  no viewer for this type yet (binary?)\n");
         term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
         return;
     }
-    app_set_arg(f->name);
+    char full[PATH_MAX];
+    selected_path(st, full);
+    app_set_arg(full);
     wm_open(APP_VIEWER, 110, 80, VIEW_WIN_W, VIEW_WIN_H);
-    // wm_open already repainted everything in the right order
-    // (viewer focused = painted last); redrawing here would
-    // stomp the viewer with the files console
 }
 
 void filemgr_input(struct console *con, char c)
 {
     struct fm_state *st = fm_for(con);
-    if (c == KEY_UP && st->sel > 0)
+    int min = st->has_parent ? -1 : 0;
+    if (c == KEY_UP && st->sel > min)
         st->sel--;
     else if (c == KEY_DOWN && st->sel < st->count - 1)
         st->sel++;
     else if (c == '\n') {
+        open_selected(st);
+        return;
+    }
+    else if (c == '\b' && st->has_parent) {
+        st->sel = -1;                    // jump to ".."
         open_selected(st);
         return;
     }

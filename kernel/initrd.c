@@ -1,5 +1,4 @@
 #include "initrd.h"
-#include "term.h"
 
 // IR2: the initramfs. GRUB loads a ustar tar archive into memory as a
 // multiboot2 module; we find it in the info tags and read files in place.
@@ -79,47 +78,9 @@ static struct tar_hdr *next_entry(struct tar_hdr *h)
     return n;
 }
 
-void initrd_list(void)
-{
-    if (!initrd_ok()) {
-        term_puts("IR2 (initramfs) not loaded\n");
-        return;
-    }
-    struct tar_hdr *h = (struct tar_hdr *)rd_start;
-    while (h && h->name[0]) {
-        const char *name = clean_name(h->name);
-        if (!name[0]) {                  // the "./" root entry
-            h = next_entry(h);
-            continue;
-        }
-        // tar directories end in '/'; only show plain files
-        int is_dir = 0;
-        for (int i = 0; i < 100 && name[i]; i++)
-            if (name[i] == '/')
-                is_dir = 1;
-        if (!is_dir) {
-            term_puts("  ");
-            term_puts(name);
-            term_puts("  (");
-            uint64_t size = octal(h->size, 12);
-            char digits[20];
-            int n = 0;
-            if (size == 0)
-                digits[n++] = '0';
-            while (size) {
-                digits[n++] = (char)('0' + size % 10);
-                size /= 10;
-            }
-            while (n)
-                term_putc(digits[--n]);
-            term_puts(" bytes)\n");
-        }
-        h = next_entry(h);
-    }
-}
-
-// enumerate plain files (skips dirs + the "./" root entry)
-int initrd_enum(int idx, const char **name, uint64_t *size_out)
+// enumerate entries: plain files (full path, e.g. "docs/readme.txt") and
+// tar directory entries (trailing '/', e.g. "docs/"). is_dir flags dirs.
+int initrd_enum(int idx, const char **name, uint64_t *size_out, int *is_dir)
 {
     if (!initrd_ok())
         return 0;
@@ -127,14 +88,15 @@ int initrd_enum(int idx, const char **name, uint64_t *size_out)
     int n = 0;
     while (h && h->name[0]) {
         const char *nm = clean_name(h->name);
-        int is_file = nm[0] != 0;
-        for (int i = 0; i < 100 && nm[i]; i++)
-            if (nm[i] == '/')
-                is_file = 0;
-        if (is_file) {
+        if (nm[0]) {                     // skip the "./" root entry
             if (n == idx) {
-                *name = nm;
-                *size_out = octal(h->size, 12);
+                int len = 0;
+                while (nm[len] && len < 100)
+                    len++;
+                int dir = len > 0 && nm[len - 1] == '/';
+                *is_dir = dir;
+                *size_out = dir ? 0 : octal(h->size, 12);
+                *name = nm;              // caller sees the trailing '/' for dirs
                 return 1;
             }
             n++;

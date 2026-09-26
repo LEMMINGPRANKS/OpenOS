@@ -233,8 +233,8 @@ void cmd_getspgk(const char *arg)
         term_puts("getspgk: download failed\n");
         return;
     }
-    // save into ramfs as <pkg> (pkg names include their extension)
-    if (ramfs_write(pkg, (const char *)body, (uint32_t)n) != 0) {
+    // save into ramfs at /<pkg> (absolute path, pkg keeps its extension)
+    if (ramfs_write(path, (const char *)body, (uint32_t)n) != 0) {
         term_puts("getspgk: ramfs full\n");
         return;
     }

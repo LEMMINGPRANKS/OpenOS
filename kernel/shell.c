@@ -7,6 +7,7 @@
 #include "ramfs.h"
 #include "files.h"
 #include "ext.h"
+#include "path.h"
 #include "getspgk.h"
 #include "mm.h"
 #include "heap.h"
@@ -22,6 +23,7 @@ struct shell_state {
 };
 
 static struct shell_state states[SHELL_STATES];
+static char cwd[PATH_MAX] = "/";
 
 static void outb(uint16_t port, uint8_t val)
 {
@@ -69,7 +71,33 @@ static struct shell_state *state_for(struct console *con)
 static void prompt(void)
 {
     term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
-    term_puts(" openos> ");
+    term_puts(" ");
+    if (cwd[1])
+        term_puts(path_basename(cwd));   // "docs>" inside /docs
+    else
+        term_puts("openos");
+    term_puts("> ");
+}
+
+static void cmd_cd(char *arg)
+{
+    char full[PATH_MAX];
+    if (!arg || !arg[0]) {              // bare cd goes home
+        cwd[0] = '/'; cwd[1] = 0;
+        return;
+    }
+    path_resolve(cwd, arg, full);
+    if (!files_is_dir(full)) {
+        term_puts("cd: not a directory: ");
+        term_puts(arg);
+        term_putc('\n');
+        return;
+    }
+    for (int i = 0; i < PATH_MAX; i++) {
+        cwd[i] = full[i];
+        if (!full[i])
+            break;
+    }
 }
 
 static void cmd_help(void)
@@ -77,7 +105,9 @@ static void cmd_help(void)
     term_puts("commands:\n");
     term_puts("  help          this list\n");
     term_puts("  echo <text>   say it back\n");
-    term_puts("  ls            list files, colour-coded by type\n");
+    term_puts("  ls            list this directory (colour-coded)\n");
+    term_puts("  cd <dir>      change directory (cd .. goes up, cd goes home)\n");
+    term_puts("  pwd           print the current directory\n");
     term_puts("  cat <file>    read a file (ramfs first, then IR2)\n");
     term_puts("  file <name>   show a file's type (.txt .cpp .iso ...)\n");
     term_puts("  getspgk list  packages on the spgk server\n");
@@ -207,6 +237,8 @@ static void cmd_reboot(void)
 void shell_execute(char *cmdline)
 {
     char *arg = 0;
+    while (*cmdline == ' ' || *cmdline == '\t')   // leading spaces are free
+        cmdline++;
     for (char *p = cmdline; *p; p++) {
         if (*p == ' ' || *p == '\t') {
             *p = 0;
@@ -223,14 +255,23 @@ void shell_execute(char *cmdline)
     else if (!strcmp(cmdline, "banner")) cmd_banner();
     else if (!strcmp(cmdline, "clear"))  term_clear();
     else if (!strcmp(cmdline, "reboot")) cmd_reboot();
+    else if (!strcmp(cmdline, "cd"))     cmd_cd(arg);
+    else if (!strcmp(cmdline, "pwd"))    { term_puts(cwd); term_putc('\n'); }
     else if (!strcmp(cmdline, "ls")) {
         struct fileinfo fl[FILES_MAX];
-        int n = files_list(fl, FILES_MAX);
+        int n = files_list_dir(cwd, fl, FILES_MAX);
         if (!n) {
-            term_puts("no files (IR2 not loaded?)\n");
+            term_puts("(empty directory)\n");
             return;
         }
         for (int i = 0; i < n; i++) {
+            if (fl[i].is_dir) {
+                term_setcolor(TERM_COLOR_DIR);
+                term_puts("  ");
+                term_puts(fl[i].name);
+                term_puts("/\n");
+                continue;
+            }
             term_setcolor(ext_lookup(fl[i].name)->vga_color);
             term_puts("  ");
             term_puts(fl[i].name);
@@ -244,8 +285,10 @@ void shell_execute(char *cmdline)
     }
     else if (!strcmp(cmdline, "cat")) {
         if (!arg) { term_puts("usage: cat <file>\n"); return; }
+        char full[PATH_MAX];
+        path_resolve(cwd, arg, full);
         uint32_t size = 0;
-        const char *data = files_read(arg, &size);
+        const char *data = files_read(full, &size);
         if (!data) {
             term_puts("cat: no such file: ");
             term_puts(arg);

@@ -4,6 +4,7 @@
 #include <stdint.h>
 
 #define TERM_COLOR_WHITE_ON_BLUE 0x1F
+#define TERM_COLOR_DIR           0x1E   // yellow on blue, for directories
 
 // Consoles are text grids that render into a pixel viewport. Many can
 // exist at once (one per window); term_* calls go to the active one.
