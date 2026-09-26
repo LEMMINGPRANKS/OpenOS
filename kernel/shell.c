@@ -335,7 +335,7 @@ void shell_execute(char *cmdline)
     else if (!strcmp(cmdline, "netinfo")) cmd_netinfo();
     else if (!strcmp(cmdline, "news")) {
         if (gfx_available())
-            wm_open(APP_NEWS, 60, 40, 432, 300);
+            wm_open(APP_NEWS, 60, 40, 432, 424);
         else
             news_fetch(term_active());  // headless: straight to the console
     }

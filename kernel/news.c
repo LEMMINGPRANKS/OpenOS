@@ -24,5 +24,5 @@ void news_fetch(struct console *con)
         term_puts("\nthe news server did not answer.\n");
         return;
     }
-    browser_render(con, (const char *)body, (uint32_t)n);
+    browser_render(con, (const char *)body, (uint32_t)n, "news");
 }

@@ -71,6 +71,7 @@ static void render_title(const char *html, uint32_t len)
             continue;
         uint32_t j = i + 6;
         while (j < len && html[j] != '>') j++;      // past attributes
+        j++;                                        // and past the '>' itself
         term_setcolor(BR_TITLE);
         while (j < len && html[j] != '<') {
             char c = html[j++];
@@ -82,13 +83,23 @@ static void render_title(const char *html, uint32_t len)
     }
 }
 
-void browser_render(struct console *con, const char *html, uint32_t len)
+void browser_render(struct console *con, const char *html, uint32_t len,
+                    const char *url)
 {
     term_use(con);
     term_setcolor(BR_TEXT);
     term_clear();
     line_fresh = 1;
     pending_space = 0;
+
+    if (url && url[0]) {             // the browser's address line
+        term_setcolor(BR_LINK);
+        term_puts("open: ");
+        term_puts(url);
+        term_putc('\n');
+        term_setcolor(BR_TEXT);
+        line_fresh = 1;
+    }
 
     render_title(html, len);
     if (!line_fresh)
@@ -144,14 +155,15 @@ void browser_render(struct console *con, const char *html, uint32_t len)
                 skip_tag[0] = 0;
             continue;
         }
-        if (!closing && (eq(name, "script") || eq(name, "style"))) {
+        if (!closing && (eq(name, "script") || eq(name, "style") ||
+                         eq(name, "title"))) {   // title shown up top already
             for (int k = 0; k < 8 && name[k]; k++) skip_tag[k] = name[k];
             skip_tag[7] = 0;
             continue;
         }
         if (eq(name, "br")) {
             emit_nl();
-        } else if (is_heading(name)) {
+        } else if (!closing && is_heading(name)) {
             if (!line_fresh) emit_nl();
             if (name[1] <= '2') emit_nl();       // air around big headings
             term_setcolor(name[1] == '1' ? BR_H1 : BR_H2);

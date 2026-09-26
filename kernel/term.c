@@ -149,6 +149,20 @@ void term_move(struct console *c, uint32_t px, uint32_t py)
     c->vy = py;
 }
 
+int term_goto(struct console *c, int col, int row)
+{
+    if (!c || col < 0 || row < 0 || col >= c->cols || row >= c->rows)
+        return 0;
+    c->crow = (uint16_t)row;
+    c->ccol = (uint16_t)col;
+    return 1;
+}
+
+uint16_t term_cols(struct console *c)
+{
+    return c ? c->cols : 0;
+}
+
 int term_locate(struct console *c, int mx, int my, int *col, int *row)
 {
     if (!c)
