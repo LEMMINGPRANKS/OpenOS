@@ -9,6 +9,7 @@ enum app_id {
     APP_FILES,
     APP_VIEWER,
     APP_RUNNER,
+    APP_BROWSER,
     APP_COUNT
 };
 

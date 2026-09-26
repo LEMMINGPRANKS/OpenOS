@@ -7,6 +7,7 @@
 #include "term.h"
 #include "wm.h"
 #include "js.h"
+#include "browser.h"
 
 // Apps are the things that can live inside a window. Each app gets
 // keyboard chars through app_input with the window's console.
@@ -85,6 +86,20 @@ static void runner_open(struct console *con)
         term_puts("\n(done)\n");
 }
 
+static void browser_open(struct console *con)
+{
+    uint32_t size = 0;
+    const char *data = files_read(app_arg, &size);
+    if (!data) {
+        term_use(con);
+        term_puts("(file not found: ");
+        term_puts(app_arg);
+        term_puts(")\n");
+        return;
+    }
+    browser_render(con, data, size);
+}
+
 static int ends_with(const char *s, const char *suf)
 {
     int n = 0, m = 0;
@@ -106,6 +121,8 @@ int open_file_window(const char *path)
     app_set_arg(path);
     if (ends_with(path, ".js"))
         return wm_open(APP_RUNNER, 110, 80, OPEN_WIN_W, OPEN_WIN_H);
+    if (ends_with(path, ".html"))
+        return wm_open(APP_BROWSER, 110, 80, OPEN_WIN_W, OPEN_WIN_H);
     if (ext_is_text(path))
         return wm_open(APP_VIEWER, 110, 80, OPEN_WIN_W, OPEN_WIN_H);
     return -1;                        // unknown/binary type
@@ -170,6 +187,8 @@ void app_open(enum app_id app, struct console *con)
         viewer_open(con);
     else if (app == APP_RUNNER)
         runner_open(con);
+    else if (app == APP_BROWSER)
+        browser_open(con);
 }
 
 void app_input(enum app_id app, struct console *con, char c)
@@ -197,5 +216,6 @@ const char *app_name(enum app_id app)
     if (app == APP_FILES)   return "Files";
     if (app == APP_VIEWER)  return "Viewer";
     if (app == APP_RUNNER)  return "Runner";
+    if (app == APP_BROWSER) return "Browser";
     return "?";
 }

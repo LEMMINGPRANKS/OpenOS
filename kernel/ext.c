@@ -6,6 +6,7 @@
 #define COL_ARCH  0x0B          // light cyan
 #define COL_PROG  0x0C          // light red
 #define COL_CONF  0x09          // light blue
+#define COL_HTML  0x0D          // light magenta
 #define COL_OTHER 0x07          // light grey
 
 static const struct ext_type types[] = {
@@ -19,6 +20,7 @@ static const struct ext_type types[] = {
     { "s",    "assembly source",     COL_SRC   },
     { "asm",  "assembly source",     COL_SRC   },
     { "js",   "JavaScript source",   COL_SRC   },
+    { "html", "HTML page",           COL_HTML  },
     { "ts",   "TypeScript source",   COL_SRC   },
     { "py",   "Python source",       COL_SRC   },
     { "java", "Java source",         COL_SRC   },
