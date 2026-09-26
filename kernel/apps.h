@@ -10,6 +10,7 @@ enum app_id {
     APP_VIEWER,
     APP_RUNNER,
     APP_BROWSER,
+    APP_NEWS,
     APP_COUNT
 };
 

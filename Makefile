@@ -13,7 +13,7 @@ OBJS = obj/boot.o obj/isr.o obj/term.o obj/idt.o obj/timer.o \
        obj/mm.o obj/heap.o obj/font.o obj/gfx.o obj/mouse.o \
        obj/wm.o obj/apps.o obj/ramfs.o obj/files.o obj/path.o obj/js.o obj/ext.o obj/browser.o \
        obj/filemgr.o obj/pci.o obj/e1000.o obj/net.o obj/tcp.o \
-       obj/getspgk.o obj/desktop.o obj/kmain.o
+       obj/getspgk.o obj/http.o obj/news.o obj/desktop.o obj/kmain.o
 
 all: openos.iso
 

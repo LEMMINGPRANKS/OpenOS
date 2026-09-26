@@ -136,6 +136,11 @@ void term_use(struct console *c)
     term_render(c);
 }
 
+struct console *term_active(void)
+{
+    return active;
+}
+
 void term_move(struct console *c, uint32_t px, uint32_t py)
 {
     if (!c)

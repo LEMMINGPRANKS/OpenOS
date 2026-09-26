@@ -10,6 +10,10 @@
 #include "path.h"
 #include "js.h"
 #include "getspgk.h"
+#include "news.h"
+#include "gfx.h"
+#include "wm.h"
+#include "apps.h"
 #include "mm.h"
 #include "heap.h"
 
@@ -116,6 +120,7 @@ static void cmd_help(void)
     term_puts("  getspgk install <pkg>  download a package into ramfs\n");
     term_puts("  getspgk server <ip>    use a real LAN machine as the server\n");
     term_puts("  netinfo       show network info (ip, mac)\n");
+    term_puts("  news          fetch the latest OpenOS updates over TCP\n");
     term_puts("  dev           show device registers (DR/IR/UR)\n");
     term_puts("  fire <dev>    trip a trap device (try: fire UR1)\n");
     term_puts("  meminfo       RAM map, free pages, heap use\n");
@@ -328,6 +333,12 @@ void shell_execute(char *cmdline)
     }
     else if (!strcmp(cmdline, "getspgk")) cmd_getspgk(arg);
     else if (!strcmp(cmdline, "netinfo")) cmd_netinfo();
+    else if (!strcmp(cmdline, "news")) {
+        if (gfx_available())
+            wm_open(APP_NEWS, 60, 40, 432, 300);
+        else
+            news_fetch(term_active());  // headless: straight to the console
+    }
     else if (!strcmp(cmdline, "dev"))    dev_list();
     else if (!strcmp(cmdline, "meminfo")) cmd_meminfo();
     else if (!strcmp(cmdline, "mtest"))  cmd_mtest();

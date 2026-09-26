@@ -14,6 +14,7 @@ void term_init(void);
 struct console *term_open(uint32_t px, uint32_t py, uint32_t pw, uint32_t ph);
 void term_close(struct console *con);
 void term_use(struct console *con);        // make active + full redraw
+struct console *term_active(void);
 void term_render(struct console *con);     // redraw just this console
 void term_move(struct console *con, uint32_t px, uint32_t py); // drag support
 int term_locate(struct console *con, int mx, int my, int *col, int *row);

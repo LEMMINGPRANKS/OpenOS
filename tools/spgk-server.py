@@ -26,6 +26,23 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if name == "news":
+            path = os.path.join(PKG_DIR, "news.html")
+            if not os.path.isfile(path):
+                self.send_response(404)
+                body = b"no news yet\n"
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+                return
+            with open(path, "rb") as f:
+                body = f.read()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         path = os.path.normpath(os.path.join(PKG_DIR, name))
         if not path.startswith(os.path.abspath(PKG_DIR)) or not os.path.isfile(path):
             self.send_response(404)

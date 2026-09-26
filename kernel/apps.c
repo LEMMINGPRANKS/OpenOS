@@ -8,6 +8,7 @@
 #include "wm.h"
 #include "js.h"
 #include "browser.h"
+#include "news.h"
 
 // Apps are the things that can live inside a window. Each app gets
 // keyboard chars through app_input with the window's console.
@@ -189,6 +190,8 @@ void app_open(enum app_id app, struct console *con)
         runner_open(con);
     else if (app == APP_BROWSER)
         browser_open(con);
+    else if (app == APP_NEWS)
+        news_fetch(con);
 }
 
 void app_input(enum app_id app, struct console *con, char c)
@@ -217,5 +220,6 @@ const char *app_name(enum app_id app)
     if (app == APP_VIEWER)  return "Viewer";
     if (app == APP_RUNNER)  return "Runner";
     if (app == APP_BROWSER) return "Browser";
+    if (app == APP_NEWS)    return "News";
     return "?";
 }
