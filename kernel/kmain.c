@@ -29,9 +29,9 @@ void kmain(unsigned long magic, unsigned long addr)
     mouse_init();                       // and a mouse (IRQ12)
 
     term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
-    term_puts("\n   OpenOS 1.0.0\n");
+    term_puts("\n   OpenOS 1.0.1\n");
     term_puts("   booting to desktop...\n\n");
-    term_setcolor(TERM_COLOR_WHITE_ON_BLACK);
+    term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
 
     if (magic != MB2_BOOT_MAGIC)
         term_puts("   warning: multiboot2 magic check FAILED\n");

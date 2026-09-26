@@ -10,6 +10,31 @@
 #define HTTP_MAX         8192
 
 static int net_ready;
+static uint32_t server_ip = SPGK_SERVER_IP;   // change with: getspgk server <ip>
+static uint16_t server_port = SPGK_SERVER_PORT;
+
+// "192.168.1.20" -> host-order IP; returns 0 on a bad address
+static uint32_t parse_ip(const char *s)
+{
+    uint32_t ip = 0;
+    for (int part = 0; part < 4; part++) {
+        if (*s < '0' || *s > '9')
+            return 0;
+        uint32_t v = 0;
+        while (*s >= '0' && *s <= '9') {
+            v = v * 10 + (uint32_t)(*s++ - '0');
+            if (v > 255)
+                return 0;
+        }
+        ip = (ip << 8) | v;
+        if (part < 3) {
+            if (*s != '.')
+                return 0;
+            s++;
+        }
+    }
+    return ip;
+}
 
 static int str_eq(const char *a, const char *b)
 {
@@ -53,8 +78,8 @@ static int ensure_net(void)
         }
     }
     uint8_t gw[6];
-    if (net_arp(SPGK_SERVER_IP, gw) != 0) {
-        term_puts("ARP: gateway did not answer\n");
+    if (net_arp(server_ip, gw) != 0) {
+        term_puts("ARP: server did not answer\n");
         return -1;
     }
     net_ready = 1;
@@ -69,7 +94,7 @@ static int ensure_net(void)
 // download a path from the server; returns body length or -1
 static int http_get(const char *path, uint8_t *body, uint32_t max)
 {
-    if (tcp_connect(SPGK_SERVER_IP, SPGK_SERVER_PORT, 4000) != 0) {
+    if (tcp_connect(server_ip, server_port, 4000) != 0) {
         term_puts("connect failed (is spgk-server running on the host?)\n");
         return -1;
     }
@@ -134,7 +159,11 @@ void cmd_netinfo(void)
         if (i < 5) term_putc(':');
     }
     term_putc('\n');
-    term_puts("server  : 10.0.2.2:8080 (spgk)\n");
+    char sip[16];
+    net_ip_str(server_ip, sip);
+    term_puts("server  : ");
+    term_puts(sip);
+    term_puts(":8080 (spgk)\n");
 }
 
 void cmd_getspgk(const char *arg)
@@ -155,6 +184,23 @@ void cmd_getspgk(const char *arg)
             term_putc(body[i]);
         if (n && body[n - 1] != '\n')
             term_putc('\n');
+        return;
+    }
+
+    // server <ip>: point getspgk at a real machine on the LAN
+    if (str_starts(arg, "server ") == 0) {
+        uint32_t ip = parse_ip(arg + 7);
+        if (!ip) {
+            term_puts("usage: getspgk server <ip like 192.168.1.20>\n");
+            return;
+        }
+        server_ip = ip;
+        net_ready = 0;                   // re-resolve ARP for the new server
+        char sip[16];
+        net_ip_str(server_ip, sip);
+        term_puts("spgk server set to ");
+        term_puts(sip);
+        term_puts(":8080\n");
         return;
     }
 

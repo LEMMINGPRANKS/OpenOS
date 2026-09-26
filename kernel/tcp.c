@@ -21,6 +21,7 @@ static uint32_t rem_ip;
 static uint16_t rem_port, loc_port;
 static uint32_t seq_num, ack_num;
 static int connected;
+static int peer_fin;
 
 static uint16_t htons_(uint16_t v) { return (uint16_t)((v << 8) | (v >> 8)); }
 static uint16_t ntohs_(uint16_t v) { return htons_(v); }
@@ -40,10 +41,10 @@ static uint16_t tcp_checksum(const struct tcp_hdr *th, const uint8_t *data,
     // pseudo header: src ip, dst ip, zero, proto, tcp length
     uint32_t tcp_len = 20 + dlen;
     uint32_t sum = 0;
-    uint32_t src = htonl_(net_local_ip());
-    uint32_t dst = htonl_(rem_ip);
-    sum += (src >> 16) & 0xFFFF; sum += src & 0xFFFF;
-    sum += (dst >> 16) & 0xFFFF; sum += dst & 0xFFFF;
+    // pseudo header: IPs are host-order, so their 16-bit halves ARE the
+    // big-endian wire words -- do NOT byte-swap them (that was the SYN bug)
+    sum += (net_local_ip() >> 16) & 0xFFFF; sum += net_local_ip() & 0xFFFF;
+    sum += (rem_ip >> 16) & 0xFFFF;         sum += rem_ip & 0xFFFF;
     sum += 6;                            // protocol
     sum += tcp_len;
 
@@ -71,7 +72,7 @@ static void tcp_send_seg(uint8_t flags, const uint8_t *data, uint32_t len)
     th.win = htons_(4096);
     th.csum = 0;
     th.urg = 0;
-    th.csum = tcp_checksum(&th, data, len);
+    th.csum = htons_(tcp_checksum(&th, data, len));
     net_ip_send((uint8_t *)&th, 20, data, len, rem_ip, 6);
 }
 
@@ -116,6 +117,7 @@ int tcp_connect(uint32_t ip, uint16_t port, uint32_t timeout_ms)
     seq_num = timer_uptime_ms() * 9 + 1;
     ack_num = 0;
     connected = 0;
+    peer_fin = 0;
 
     tcp_send_seg(SYN, 0, 0);
     for (;;) {
@@ -153,7 +155,7 @@ int tcp_recv(uint8_t *buf, uint32_t max, uint32_t timeout_ms)
 {
     static struct rxseg r;
     if (!connected)
-        return -1;
+        return peer_fin ? -2 : -1;       // closed by peer vs. caller error
     int n = wait_seg(&r, timeout_ms);
     if (n < 0)
         return -1;                       // timeout, still connected
@@ -163,17 +165,24 @@ int tcp_recv(uint8_t *buf, uint32_t max, uint32_t timeout_ms)
     }
     if (r.body_len) {
         ack_num = ntohl_(r.hdr.seq) + r.body_len;
-        tcp_send_seg(ACK, 0, 0);
+        if (r.hdr.flags & FIN) {         // last data + goodbye in one segment
+            tcp_send_seg(FIN | ACK, 0, 0);
+            seq_num += 1;
+            connected = 0;
+            peer_fin = 1;
+        } else {
+            tcp_send_seg(ACK, 0, 0);
+        }
         uint32_t len = r.body_len > max ? max : r.body_len;
         for (uint32_t i = 0; i < len; i++)
             buf[i] = r.body[i];
         return (int)len;
     }
-    if (r.hdr.flags & (FIN | ACK)) {     // server said goodbye
+    if (r.hdr.flags & FIN) {             // bare FIN: server said goodbye
         ack_num = ntohl_(r.hdr.seq) + 1;
-        tcp_send_seg(FIN | ACK, 0, 0);
-        seq_num += 1;
+        tcp_send_seg(ACK, 0, 0);
         connected = 0;
+        peer_fin = 1;
         return -2;                       // closed
     }
     return 0;                            // bare ACK, no data

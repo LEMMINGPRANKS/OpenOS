@@ -55,7 +55,7 @@ static void fm_refresh(struct fm_state *st)
 static void fm_render(struct fm_state *st)
 {
     term_use(st->con);
-    term_setcolor(TERM_COLOR_WHITE_ON_BLACK);
+    term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
     term_clear();
     term_puts("FILES  (up/down arrows, Enter opens, r refreshes)\n\n");
     if (!st->count) {
@@ -65,11 +65,11 @@ static void fm_render(struct fm_state *st)
     for (int i = 0; i < st->count; i++) {
         struct fileinfo *f = &st->files[i];
         const struct ext_type *t = ext_lookup(f->name);
-        term_setcolor(TERM_COLOR_WHITE_ON_BLACK);
+        term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
         term_puts(i == st->sel ? " > " : "   ");
         term_setcolor(t->vga_color);
         term_puts(f->name);
-        term_setcolor(TERM_COLOR_WHITE_ON_BLACK);
+        term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
         term_puts("  [");
         term_puts(f->source == FS_RAMFS ? "ramfs" : "IR2");
         term_puts("] ");
@@ -96,7 +96,7 @@ static void open_selected(struct fm_state *st)
         fm_render(st);               // redraw, then complain below list
         term_setcolor(0x0E);
         term_puts("\n  no viewer for this type yet (binary?)\n");
-        term_setcolor(TERM_COLOR_WHITE_ON_BLACK);
+        term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
         return;
     }
     app_set_arg(f->name);

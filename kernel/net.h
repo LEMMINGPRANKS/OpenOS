@@ -31,7 +31,6 @@ int  net_ip_send(const uint8_t *hdr, uint32_t hdrlen,
                  uint32_t dst_ip, uint8_t proto);
 // wait for one TCP segment addressed to us (returns ip payload length)
 int  net_ip_poll_tcp(uint8_t *out, uint32_t max, uint32_t timeout_ms);
-void net_gw_mac(uint8_t *out);
 const uint8_t *net_our_mac(void);
 
 #endif

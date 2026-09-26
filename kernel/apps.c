@@ -38,7 +38,7 @@ static void viewer_open(struct console *con)
     term_puts("--- ");
     term_puts(app_arg);
     term_puts(" ---\n");
-    term_setcolor(TERM_COLOR_WHITE_ON_BLACK);
+    term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
     term_puts("type: ");
     term_puts(t->desc);
     term_puts("\n\n");

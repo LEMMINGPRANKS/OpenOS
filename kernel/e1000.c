@@ -110,6 +110,11 @@ int e1000_send(const uint8_t *frame, uint32_t len)
 {
     if (!regs || len > E1000_MTU)
         return -1;
+    if (len < 60) {                     // pad runts: real switches drop <60
+        for (uint32_t i = len; i < 60; i++)
+            ((uint8_t *)frame)[i] = 0;
+        len = 60;
+    }
 
     struct tx_desc *d = &txring[tx_next];
     d->addr = (uint64_t)(uintptr_t)frame;   // caller's buffer, sent at once

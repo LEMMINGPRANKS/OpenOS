@@ -46,10 +46,35 @@ struct dhcp_pkt {
     uint8_t  opts[64];
 } __attribute__((packed));
 
-static uint8_t our_mac[6];
-static uint8_t gw_mac[6];
-static int      gw_mac_known;
+static uint8_t  our_mac[6];
 static uint32_t our_ip;                 // host order
+static uint32_t our_netmask;            // host order, from DHCP option 1
+static uint32_t gw_ip;                  // host order, from DHCP option 3
+
+// small ARP cache, keyed by IP (real LANs have more than one host)
+#define ARP_CACHE 8
+static struct { uint32_t ip; uint8_t mac[6]; int valid; } arpc[ARP_CACHE];
+
+static const uint8_t *arp_lookup(uint32_t ip)
+{
+    for (int i = 0; i < ARP_CACHE; i++)
+        if (arpc[i].valid && arpc[i].ip == ip)
+            return arpc[i].mac;
+    return 0;
+}
+
+static void arp_cache_add(uint32_t ip, const uint8_t *mac)
+{
+    int slot = -1;
+    for (int i = 0; i < ARP_CACHE; i++) {
+        if (arpc[i].valid && arpc[i].ip == ip) { slot = i; break; }
+        if (!arpc[i].valid && slot < 0) slot = i;
+    }
+    if (slot < 0) slot = 0;                 // full: evict the oldest entry 0
+    arpc[slot].ip = ip;
+    for (int i = 0; i < 6; i++) arpc[slot].mac[i] = mac[i];
+    arpc[slot].valid = 1;
+}
 
 static uint8_t txf[E1000_MTU] __attribute__((aligned(8)));
 static uint8_t rxf[E1000_MTU] __attribute__((aligned(8)));
@@ -75,10 +100,6 @@ static uint16_t csum16(const uint8_t *p, uint32_t n)
 }
 
 const uint8_t *net_our_mac(void) { return our_mac; }
-void net_gw_mac(uint8_t *out)
-{
-    for (int i = 0; i < 6; i++) out[i] = gw_mac[i];
-}
 int  net_up(void)      { return e1000_up(); }
 uint32_t net_local_ip(void) { return our_ip; }
 
@@ -117,6 +138,19 @@ int net_send_frame(const uint8_t *dst, uint16_t ethertype,
 
 // --- IP + UDP send ---------------------------------------------------------
 
+// work out the next hop for a destination: direct if on our subnet,
+// otherwise via the DHCP router. Returns the IP to ARP for.
+static uint32_t next_hop(uint32_t dst_ip)
+{
+    if (!our_ip || dst_ip == 0xFFFFFFFF)
+        return 0xFFFFFFFF;                // still configuring: broadcast
+    if (our_netmask && (dst_ip & our_netmask) == (our_ip & our_netmask))
+        return dst_ip;                    // same subnet: talk straight to it
+    if (gw_ip)
+        return gw_ip;                     // off-subnet: via the router
+    return dst_ip;                        // no router learned: hope
+}
+
 int net_ip_send(const uint8_t *hdr, uint32_t hdrlen,
                 const uint8_t *payload, uint32_t paylen,
                 uint32_t dst_ip, uint8_t proto)
@@ -126,10 +160,19 @@ int net_ip_send(const uint8_t *hdr, uint32_t hdrlen,
         return -1;
 
     struct eth_hdr *e = (struct eth_hdr *)txf;
-    if (gw_mac_known) {
-        for (int i = 0; i < 6; i++) e->dst[i] = gw_mac[i];
-    } else {
+    uint32_t nh = next_hop(dst_ip);
+    if (nh == 0xFFFFFFFF) {
         for (int i = 0; i < 6; i++) e->dst[i] = 0xFF;   // broadcast
+    } else {
+        const uint8_t *m = arp_lookup(nh);
+        if (m) {
+            for (int i = 0; i < 6; i++) e->dst[i] = m[i];
+        } else {
+            uint8_t mac[6];
+            if (net_arp(nh, mac) != 0)
+                return -1;                // nobody answered
+            for (int i = 0; i < 6; i++) e->dst[i] = mac[i];
+        }
     }
     for (int i = 0; i < 6; i++) e->src[i] = our_mac[i];
     e->type = htons_(ETH_IP);
@@ -169,15 +212,14 @@ int net_udp_send(const uint8_t *data, uint32_t len,
 
 static void handle_arp(struct arp_pkt *a)
 {
+    uint32_t spa = htonl_(a->spa);
     uint32_t tpa = htonl_(a->tpa);
-    if (ntohs_(a->oper) == 2) {         // reply: cache it
-        if (!gw_mac_known) {
-            for (int i = 0; i < 6; i++) gw_mac[i] = a->sha[i];
-            gw_mac_known = 1;
-        }
+    if (ntohs_(a->oper) == 2) {         // reply: cache the sender
+        arp_cache_add(spa, a->sha);
         return;
     }
     if (ntohs_(a->oper) == 1 && tpa == our_ip && our_ip) {
+        arp_cache_add(spa, a->sha);     // learn from queries aimed at us
         // someone asks for us: answer
         struct arp_pkt r;
         r.htype = htons_(1);
@@ -205,13 +247,21 @@ static void handle_ip(struct ip_hdr *ip, uint32_t n)
 {
     if ((ip->verihl >> 4) != 4)
         return;
-    if (csum16((uint8_t *)ip, 20) != 0)
+    uint32_t hlen = (uint32_t)(ip->verihl & 0xF) * 4;
+    if (hlen < 20 || hlen > n)
+        return;
+    if (csum16((uint8_t *)ip, hlen) != 0)
         return;                         // bad header checksum
-    if (ip->proto == 6 && !tcp_pending_len && n >= 20) {
+    // trust the IP total-length field, never the frame length: frames are
+    // padded to 60 bytes and that padding is NOT TCP payload
+    uint32_t iplen = ntohs_(ip->total);
+    if (iplen < hlen || iplen > n)
+        return;                         // packet lies about its length
+    if (ip->proto == 6 && !tcp_pending_len) {
         // whole TCP segment (IP payload) for tcp.c
-        uint32_t len = n - 20;
+        uint32_t len = iplen - hlen;
         if (len > E1000_MTU) len = E1000_MTU;
-        uint8_t *seg = (uint8_t *)ip + 20;
+        uint8_t *seg = (uint8_t *)ip + hlen;
         for (uint32_t i = 0; i < len; i++)
             tcp_pending[i] = seg[i];
         tcp_pending_len = len;
@@ -219,8 +269,7 @@ static void handle_ip(struct ip_hdr *ip, uint32_t n)
     }
     if (ip->proto != 17)
         return;
-    uint32_t hlen = (uint32_t)(ip->verihl & 0xF) * 4;
-    if (hlen + 8 > n)
+    if (hlen + 8 > iplen)
         return;
     struct udp_hdr *u = (struct udp_hdr *)((uint8_t *)ip + hlen);
     if (!udp_pending_len && !udp_pending_port) {
@@ -293,6 +342,11 @@ int net_udp_poll(uint8_t *out, uint32_t max, uint16_t want_port,
 
 int net_arp(uint32_t ip, uint8_t *mac_out)
 {
+    const uint8_t *hit = arp_lookup(ip);
+    if (hit) {
+        for (int i = 0; i < 6; i++) mac_out[i] = hit[i];
+        return 0;
+    }
     for (int try = 0; try < 3; try++) {
         struct arp_pkt q;
         q.htype = htons_(1);
@@ -304,14 +358,14 @@ int net_arp(uint32_t ip, uint8_t *mac_out)
         for (int i = 0; i < 6; i++) q.tha[i] = 0;
         q.tpa = htonl_(ip);
         uint8_t bcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-        gw_mac_known = 0;
         net_send_frame(bcast, ETH_ARP, (uint8_t *)&q, sizeof q);
 
         uint64_t start = timer_uptime_ms();
         while (timer_uptime_ms() - start < 500) {
             net_poll_once();
-            if (gw_mac_known) {
-                for (int i = 0; i < 6; i++) mac_out[i] = gw_mac[i];
+            const uint8_t *m = arp_lookup(ip);
+            if (m) {
+                for (int i = 0; i < 6; i++) mac_out[i] = m[i];
                 return 0;
             }
             __asm__ volatile ("hlt");
@@ -410,6 +464,11 @@ static int dhcp_run(void)
     if (mtype != DHCP_ACK)
         return -4;
     our_ip = offered;
+    uint8_t opt4[4];
+    if (dhcp_get_option(r.opts, (uint32_t)rn - 240, 1, opt4, 4) == 4)
+        our_netmask = IP(opt4[0], opt4[1], opt4[2], opt4[3]);   // subnet mask
+    if (dhcp_get_option(r.opts, (uint32_t)rn - 240, 3, opt4, 4) == 4)
+        gw_ip = IP(opt4[0], opt4[1], opt4[2], opt4[3]);         // router
     return 0;
 }
 

@@ -107,7 +107,7 @@ struct console *term_open(uint32_t px, uint32_t py, uint32_t pw, uint32_t ph)
     c->cols = (uint16_t)(pw / FONT_W);
     c->rows = (uint16_t)(ph / FONT_H);
     c->crow = 0; c->ccol = 0;
-    c->color = 0x0F;
+    c->color = TERM_COLOR_WHITE_ON_BLUE;
     c->cells = kmalloc((uint32_t)c->rows * c->cols * 2);
     if (!c->cells) {
         kfree(c);
@@ -115,7 +115,7 @@ struct console *term_open(uint32_t px, uint32_t py, uint32_t pw, uint32_t ph)
     }
     for (uint32_t i = 0; i < (uint32_t)c->rows * c->cols * 2; i += 2) {
         c->cells[i] = ' ';
-        c->cells[i + 1] = 0x0F;
+        c->cells[i + 1] = TERM_COLOR_WHITE_ON_BLUE;
     }
     return c;
 }
@@ -203,7 +203,7 @@ static void putc_con(struct console *c, char ch)
 // --- legacy VGA-text fallback (no framebuffer machines) ------------------
 
 static int vrow, vcol;
-static uint8_t vcolor = 0x0F;
+static uint8_t vcolor = TERM_COLOR_WHITE_ON_BLUE;
 
 static void vga_scroll(void)
 {

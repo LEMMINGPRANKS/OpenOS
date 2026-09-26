@@ -4,7 +4,6 @@
 #include <stdint.h>
 
 #define TERM_COLOR_WHITE_ON_BLUE 0x1F
-#define TERM_COLOR_WHITE_ON_BLACK 0x0F
 
 // Consoles are text grids that render into a pixel viewport. Many can
 // exist at once (one per window); term_* calls go to the active one.

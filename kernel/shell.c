@@ -70,7 +70,6 @@ static void prompt(void)
 {
     term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
     term_puts(" openos> ");
-    term_setcolor(TERM_COLOR_WHITE_ON_BLACK);
 }
 
 static void cmd_help(void)
@@ -83,6 +82,7 @@ static void cmd_help(void)
     term_puts("  file <name>   show a file's type (.txt .cpp .iso ...)\n");
     term_puts("  getspgk list  packages on the spgk server\n");
     term_puts("  getspgk install <pkg>  download a package into ramfs\n");
+    term_puts("  getspgk server <ip>    use a real LAN machine as the server\n");
     term_puts("  netinfo       show network info (ip, mac)\n");
     term_puts("  dev           show device registers (DR/IR/UR)\n");
     term_puts("  fire <dev>    trip a trap device (try: fire UR1)\n");
@@ -115,15 +115,14 @@ static void cmd_uptime(void)
 
 static void cmd_about(void)
 {
-    term_puts("OpenOS 1.0.0 -- a 64-bit open-source OS from scratch.\n");
+    term_puts("OpenOS 1.0.1 -- a 64-bit open-source OS from scratch.\n");
     term_puts("BDFL: Freddie. Kernel + shell + desktop + files + network (getspgk).\n");
 }
 
 static void cmd_banner(void)
 {
     term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
-    term_puts("\n   OpenOS 1.0.0   desktop + getspgk edition\n\n");
-    term_setcolor(TERM_COLOR_WHITE_ON_BLACK);
+    term_puts("\n   OpenOS 1.0.1   desktop + getspgk edition\n\n");
 }
 
 static void print_hex(uint64_t v)
@@ -235,7 +234,7 @@ void shell_execute(char *cmdline)
             term_setcolor(ext_lookup(fl[i].name)->vga_color);
             term_puts("  ");
             term_puts(fl[i].name);
-            term_setcolor(TERM_COLOR_WHITE_ON_BLACK);
+            term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
             term_puts("  [");
             term_puts(fl[i].source == FS_RAMFS ? "ramfs" : "IR2");
             term_puts("] ");

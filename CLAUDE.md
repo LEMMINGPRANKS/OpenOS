@@ -50,13 +50,27 @@ Never invent other naming schemes. New devices join these registers.
 - **Stage 4 — Tools**: calculator, text editor, file browser, terminal app
 - **getspgk** (curl + apt): network stack ladder — e1000 NIC driver -> DHCP ->
   ARP -> UDP -> TCP -> HTTP GET -> install packages into a RAM filesystem
-  - Status (v1.0.0): e1000 TX/RX + DHCP + ARP verified working (guest gets
-    10.0.2.15, resolves the gateway). TCP + HTTP code written but blocked:
-    QEMU's slirp silently drops our SYN before tcp_input (no connect(), no
-    RST). Debug harness: /tmp/slirp_harness replays the captured SYN into the
-    real libslirp; next step is debuginfod symbols + gdb. Target: v1.0.1.
-    Host server: `python3 tools/spgk-server.py` (guest reaches it at
-    10.0.2.2:8080 over QEMU user-net).
+  - Status (v1.0.1): **WORKS END TO END** — `getspgk list` and
+    `getspgk install <pkg>` both verified in QEMU against the host server.
+    Four stacked bugs fixed: TCP pseudo-header checksum used byte-swapped IP
+    halves, checksum stored without htons, IP padding treated as TCP payload
+    (trust ip->total, never the frame length), FIN/ACK close handling.
+    Real-hardware readiness: ARP cache (not one gateway MAC), DHCP options 1+3
+    (netmask + router) with subnet-aware next-hop (direct vs gateway), runt
+    frames padded to 60 bytes, `getspgk server <ip>` points it at any real
+    LAN machine. Host server: `python3 tools/spgk-server.py` (guest reaches it
+    at 10.0.2.2:8080 over QEMU user-net).
+
+## Roadmap
+
+- **v1.0.2** (BDFL decree, 2026-09-26):
+  - Double-clicky executable files in the Files app / desktop
+  - HTML support + a web browser **demo** (the full browser is v1.1.0)
+  - News app: uses our TCP stack to fetch the latest software updates
+  - System updates over our own TCP stack — no GitHub needed ever again
+- **v1.1.0**: full from-scratch web browser (DNS -> HTTP -> HTML subset ->
+  WM window; Electron is impossible — it needs a host OS underneath) +
+  directories in the filesystem (`cd`, `pwd`, folders in Files app)
 
 ## Build & run
 
