@@ -10,6 +10,7 @@
 #include "internet.h"
 #include "timer.h"
 #include "paint.h"
+#include "settings.h"
 #include "store.h"
 #include "kupdate.h"
 
@@ -197,6 +198,8 @@ void app_open(enum app_id app, struct console *con)
         internet_app_open(con);
     else if (app == APP_PAINT)
         paint_open(con);
+    else if (app == APP_SETTINGS)
+        settings_app_open(con);
 }
 
 void app_input(enum app_id app, struct console *con, char c)
@@ -211,6 +214,8 @@ void app_input(enum app_id app, struct console *con, char c)
         internet_app_input(con, c);
     else if (app == APP_PAINT)
         paint_input(con, c);
+    else if (app == APP_SETTINGS)
+        settings_app_input(con, c);
     (void)con; (void)c;                // other apps take no keyboard input
 }
 
@@ -251,5 +256,6 @@ const char *app_name(enum app_id app)
     if (app == APP_RUNNER)    return "Runner";
     if (app == APP_INTERNET)  return "Internet";
     if (app == APP_PAINT)     return "Paint";
+    if (app == APP_SETTINGS)  return "Settings";
     return "?";
 }

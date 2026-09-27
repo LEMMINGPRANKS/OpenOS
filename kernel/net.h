@@ -9,6 +9,7 @@
 #define IP(a,b,c,d) (((a)<<24)|((b)<<16)|((c)<<8)|(d))   // host-order helper
 
 int  net_init(void);                    // NIC + DHCP (+ DNS server from DHCP)
+void net_reset(void);                   // forget IP + ARP: next net_init re-DHCPs
 int  net_up(void);                      // card found AND DHCP gave us an IP
 uint32_t net_local_ip(void);            // host order
 void net_ip_str(uint32_t ip, char *out);// "10.0.2.15"

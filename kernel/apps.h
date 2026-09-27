@@ -11,6 +11,7 @@ enum app_id {
     APP_RUNNER,
     APP_INTERNET,
     APP_PAINT,
+    APP_SETTINGS,
     APP_COUNT
 };
 

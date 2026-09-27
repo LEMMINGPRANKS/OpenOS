@@ -13,6 +13,9 @@
 #define NIC_MIN_FRAME 60                // shorter frames get zero-padded
 
 int  nic_init(void);                    // 0 = a card is up
+int  nic_rebind(const char *pref);      // switch card family, 0 = bound
+int  nic_driver_count(void);
+const char *nic_driver_name(int i);     // "e1000", "rtl8169", ...
 int  nic_up(void);
 void nic_mac(uint8_t *six_bytes);
 const char *nic_name(void);             // "Intel 82540EM", ... or "none"

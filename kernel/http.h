@@ -9,6 +9,7 @@
 #define HTTP_MAX 8192
 
 int      http_set_server(uint32_t ip, uint16_t port);
+void     http_net_forget(void);         // next request re-brings-up the network
 uint32_t http_server_ip(void);
 uint16_t http_server_port(void);
 

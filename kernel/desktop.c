@@ -35,6 +35,8 @@
 #define TB_NET_W    (8 * FONT_W + 12)
 #define TB_PAINT_X  (TB_NET_X + TB_NET_W + TB_BTN_GAP)
 #define TB_PAINT_W  (5 * FONT_W + 12)
+#define TB_SET_X    (TB_PAINT_X + TB_PAINT_W + TB_BTN_GAP)
+#define TB_SET_W    (8 * FONT_W + 12)
 
 #define SHELL_WIN_W 496
 #define SHELL_WIN_H 320
@@ -98,6 +100,8 @@ static void taskbar(void)
     gfx_text(TB_NET_X + 6, y + TB_BTN_Y + 2, "Internet", 0xFFFFFF, 0x3050C8);
     gfx_fill_rect(TB_PAINT_X, y + TB_BTN_Y, TB_PAINT_W, TB_BTN_H, 0x3050C8);
     gfx_text(TB_PAINT_X + 6, y + TB_BTN_Y + 2, "Paint", 0xFFFFFF, 0x3050C8);
+    gfx_fill_rect(TB_SET_X, y + TB_BTN_Y, TB_SET_W, TB_BTN_H, 0x3050C8);
+    gfx_text(TB_SET_X + 6, y + TB_BTN_Y + 2, "Settings", 0xFFFFFF, 0x3050C8);
 
     uint64_t s = timer_uptime_ms() / 1000;
     char clock[16];
@@ -201,6 +205,9 @@ static void taskbar_click(int mx, int my)
                my >= (int32_t)y && my < (int32_t)(y + TB_BTN_H)) {
         app_set_arg("");
         wm_open(APP_PAINT, 60, 40, PAINT_WIN_W, PAINT_WIN_H);
+    } else if (mx >= (int32_t)TB_SET_X && mx < (int32_t)(TB_SET_X + TB_SET_W) &&
+               my >= (int32_t)y && my < (int32_t)(y + TB_BTN_H)) {
+        wm_open(APP_SETTINGS, wx, wy, 400, 300);
     }
 }
 

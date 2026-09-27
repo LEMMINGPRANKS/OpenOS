@@ -181,6 +181,19 @@ Never invent other naming schemes. New devices join these registers.
   82545EM, 82544GC and rtl8139 (DHCP, DNS, fetch, 90 KB kernel update
   byte-exact on disk). RTL8169 family + PCH Intel parts: untested (QEMU
   has no model for them).
+- **v1.4.3** (2026-09-27) — **DONE**: Settings app + network-driver picker.
+  kernel/settings.c: a key=value store (/settings.txt in ramfs, flushed to
+  DR1 on every change -- survives reboot with no `save`) + a Settings
+  window (taskbar Settings button / `settings` command, headless prints
+  current values). Network card row cycles auto/e1000/rtl8169/rtl8139 and
+  applies INSTANTLY: saves the pref, net_reset(), nic_rebind() re-probes
+  (preferred family first, stale pref falls back so boot can never break),
+  then re-DHCPs right in the window. Package-server row is a typeable
+  ip:port line (Enter applies via http_set_server). At boot nic_init()
+  reads the "nic" pref for probe order; http.c applies the "server" pref
+  once at first bring-up (http_net_forget re-arms it). Verified in QEMU
+  with two NICs: live switch e1000 -> rtl8139 (and back), missing-card
+  fallback, server change, cold-reboot persistence.
 - **next**: a search engine (BDFL's own idea, posted from the Ideas
   tab), bookmarks + history in the browser
 
@@ -226,6 +239,7 @@ kernel/http.c/.h   # shared HTTP client (get/post/get_url; used by getspgk + int
 kernel/news.c/.h   # headless news fetch (the Internet app News tab uses http directly)
 kernel/dns.c/.h    # DNS resolver (A records over UDP, cache)
 kernel/internet.c/.h # The Internet app: browser/news/updates/comments/ideas tabs
+kernel/settings.c/.h # key=value settings store (/settings.txt -> DR1) + Settings app
 kernel/version.h   # single OS_VERSION string used by every banner
 kernel/filemgr.c/.h # Files app: keyboard + mouse file browser
 kernel/pci.c/.h    # PCI config-space scan, BAR decode

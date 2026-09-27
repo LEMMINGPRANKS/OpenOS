@@ -26,6 +26,8 @@
 #include "part.h"
 #include "store.h"
 #include "kupdate.h"
+#include "settings.h"
+#include "nic.h"
 
 #define LINE_MAX 128
 #define SHELL_STATES 5          // [0] = boot/VGA console, rest = windows
@@ -141,6 +143,7 @@ static void cmd_help(void)
     term_puts("  fetch <url>   download a page (try: fetch example.com/)\n");
     term_puts("  news          the News, in a window\n");
     term_puts("  internet      the Internet app (browser + news + updates + comments)\n");
+    term_puts("  settings      settings app (network card, package server)\n");
     term_puts("  update        install fresh features from the update server\n");
     term_puts("  update kernel install a new KERNEL into the other slot (A/B)\n");
     term_puts("  dev           show device registers (DR/IR/UR)\n");
@@ -603,6 +606,31 @@ void shell_execute(char *cmdline)
             wm_open(APP_PAINT, 60, 40, PAINT_WIN_W, PAINT_WIN_H);
         } else
             term_puts("paint needs the desktop (framebuffer)\n");
+    }
+    else if (!strcmp(cmdline, "settings")) {
+        if (gfx_available()) {
+            wm_open(APP_SETTINGS, 60, 40, 400, 300);
+        } else {
+            // headless: print what's set
+            char v[32];
+            term_puts("nic: ");
+            if (settings_get("nic", v, sizeof v) == 0)
+                term_puts(v);
+            else
+                term_puts("auto");
+            term_puts(" (active: ");
+            term_puts(nic_name());
+            term_puts(")\nserver: ");
+            if (settings_get("server", v, sizeof v) == 0)
+                term_puts(v);
+            else {
+                char ipstr[16];
+                net_ip_str(http_server_ip(), ipstr);
+                term_puts(ipstr);
+                term_puts(" (default)");
+            }
+            term_putc('\n');
+        }
     }
     else if (!strcmp(cmdline, "dev"))    dev_list();
     else if (!strcmp(cmdline, "disk"))   cmd_disk(arg);

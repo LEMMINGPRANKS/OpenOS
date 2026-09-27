@@ -6,6 +6,7 @@
 #include "term.h"
 #include "timer.h"
 #include "heap.h"
+#include "settings.h"
 
 #define DEFAULT_IP   IP(10,0,2,2)   // QEMU user-net gateway = host
 #define DEFAULT_PORT 8080
@@ -24,8 +25,32 @@ int http_set_server(uint32_t ip, uint16_t port)
 uint32_t http_server_ip(void)   { return server_ip; }
 uint16_t http_server_port(void) { return server_port; }
 
+void http_net_forget(void) { net_ready = 0; }
+
+static int parse_host(const char *host, int n, uint32_t *ip, uint16_t *port);
+
+// the "server=ip:port" setting wins over the default, applied once at the
+// first bring-up (and again after settings changes call http_net_forget)
+static void apply_server_setting(void)
+{
+    static int applied;
+    if (applied)
+        return;
+    applied = 1;
+    char v[32];
+    if (settings_get("server", v, sizeof v) != 0)
+        return;
+    int n = 0;
+    while (v[n] && v[n] != ' ') n++;    // value should be a clean ip:port
+    uint32_t ip;
+    uint16_t port;
+    if (parse_host(v, n, &ip, &port) == 0)
+        http_set_server(ip, port);
+}
+
 int http_ensure_net(void)
 {
+    apply_server_setting();
     if (net_ready)
         return 0;
     if (!net_up()) {

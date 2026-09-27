@@ -520,6 +520,16 @@ static int dhcp_run(void)
     return 0;
 }
 
+void net_reset(void)
+{
+    our_ip = 0;
+    our_netmask = 0;
+    gw_ip = 0;
+    dns_ip = 0;
+    for (int i = 0; i < ARP_CACHE; i++)
+        arpc[i].valid = 0;
+}
+
 int net_init(void)
 {
     if (nic_init() != 0)
