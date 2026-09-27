@@ -13,6 +13,7 @@
 #include "net.h"
 #include "desktop.h"
 #include "store.h"
+#include "timer.h"
 
 // Apps are the things that can live inside a window. Each app gets
 // keyboard chars through app_input with the window's console.
@@ -28,6 +29,8 @@ struct note_state {
 };
 
 static struct note_state notes[NOTE_STATES];
+
+static uint64_t last_note_flush;        // DR1 auto-save throttle
 
 static char app_arg[32];              // filename for the viewer
 
@@ -140,6 +143,9 @@ static uint32_t ip_parse(const char *s, int n)
 }
 
 static int ends_with(const char *s, const char *suf);   // defined below
+static int starts_with(const char *s, const char *pre);
+static int looks_like_html(const uint8_t *body, uint32_t n);
+static int looks_like_text(const uint8_t *body, uint32_t n);
 static void burl_set(const char *s);
 static void browser_load(struct console *con);
 
@@ -266,7 +272,13 @@ static void browser_load(struct console *con)
         if (http_ensure_net() == 0) {
             int n = http_get(path, body, HTTP_MAX);
             if (n > 0) {
-                if (ends_with(path, ".html")) {
+                if (starts_with(path, "/updates/")) {
+                    browser_install(con, path, body, (uint32_t)n);
+                    return;
+                }
+                if (ends_with(path, ".html") || ends_with(path, ".htm") ||
+                    looks_like_html(body, (uint32_t)n) ||
+                    looks_like_text(body, (uint32_t)n)) {
                     browser_render(con, (const char *)body, (uint32_t)n, burl);
                     return;
                 }
@@ -289,15 +301,36 @@ static void browser_load(struct console *con)
     fpath[fn] = 0;
     uint32_t size = 0;
     const char *data = files_read(fpath, &size);
-    if (!data) {
-        burl_draw(con);
-        term_goto(con, 0, 1);
-        term_puts("(not found: ");
-        term_puts(fpath);
-        term_puts(")\ntry 10.0.2.2:8080/news or demo.html\n");
+    if (data) {
+        browser_render(con, data, size, burl);
         return;
     }
-    browser_render(con, data, size, burl);
+
+    // not a local file: try it as a page on the package server, so typing
+    // "news" just gets the news
+    http_set_server(http_server_ip(), http_server_port());   // last server,
+    static uint8_t body[HTTP_MAX];                            // or the default
+    if (http_ensure_net() == 0) {
+        int n = http_get(fpath, body, HTTP_MAX);
+        if (n > 0) {
+            if (starts_with(fpath, "/updates/")) {
+                browser_install(con, fpath, body, (uint32_t)n);
+                return;
+            }
+            if (looks_like_html(body, (uint32_t)n) ||
+                looks_like_text(body, (uint32_t)n)) {
+                browser_render(con, (const char *)body, (uint32_t)n, burl);
+                return;
+            }
+            browser_install(con, fpath, body, (uint32_t)n);
+            return;
+        }
+    }
+    burl_draw(con);
+    term_goto(con, 0, 1);
+    term_puts("(not found: ");
+    term_puts(fpath);
+    term_puts(")\ntry 10.0.2.2:8080/news or demo.html\n");
 }
 
 static void browser_input(struct console *con, char c)
@@ -343,6 +376,56 @@ static int ends_with(const char *s, const char *suf)
         if (s[n - m + i] != suf[i])
             return 0;
     return 1;
+}
+
+// the server calls the news page "/news" (no .html), so the address alone
+// can't decide render-vs-download: look at the actual bytes instead.
+// Plain text (like /index) renders too -- only /updates/ links and real
+// binaries are worth installing as double-clicky files.
+static int looks_like_text(const uint8_t *body, uint32_t n)
+{
+    uint32_t lim = n < 256 ? n : 256;
+    for (uint32_t i = 0; i < lim; i++) {
+        uint8_t c = body[i];
+        if (c < 32 && c != '\n' && c != '\r' && c != '\t')
+            return 0;
+    }
+    return 1;
+}
+
+static int starts_with(const char *s, const char *pre)
+{
+    int i = 0;
+    while (pre[i]) {
+        if (s[i] != pre[i])
+            return 0;
+        i++;
+    }
+    return 1;
+}
+
+static int looks_like_html(const uint8_t *body, uint32_t n)
+{
+    static const char *tags[] = { "!doctype", "html", "head", "body", 0 };
+    uint32_t lim = n < 256 ? n : 256;
+    for (int t = 0; tags[t]; t++) {
+        const char *tag = tags[t];
+        int tn = 0;
+        while (tag[tn]) tn++;
+        for (uint32_t i = 0; i + tn + 1 < lim; i++) {
+            if (body[i] != '<')
+                continue;
+            int same = 1;
+            for (int k = 0; k < tn; k++) {
+                char c = (char)body[i + 1 + k];
+                if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+                if (c != tag[k]) { same = 0; break; }
+            }
+            if (same)
+                return 1;
+        }
+    }
+    return 0;
 }
 
 #define OPEN_WIN_W 448
@@ -405,6 +488,13 @@ static void notepad_input(struct console *con, char c)
     }
     st->buf[st->n] = 0;
     ramfs_write("/note.txt", st->buf, (uint32_t)st->n);
+    // DR1 auto-save: wait for a typing pause so we're not hitting the
+    // disk on every keypress (100 Hz ticks, NOTE_FLUSH_TICKS = 2s)
+    uint64_t now = timer_ticks();
+    if (now - last_note_flush >= 200) {
+        last_note_flush = now;
+        store_flush();
+    }
 }
 
 void app_open(enum app_id app, struct console *con)
