@@ -44,6 +44,14 @@ static int sb_ok(struct store_sb *sb)
     return sb->nfiles <= RAMFS_MAX_FILES;
 }
 
+// Store-drive law: if a second disk is attached, the filesystem LIVES there
+// (the boot disk's copy is just the seed). store_disk_on()/off() wrap every
+// store access so nothing else notices the drive switch.
+static int migrated;                    // set when we copied seed -> store drive
+
+static void store_disk_on(void)  { ata_use_slave(ata_slave_present()); }
+static void store_disk_off(void) { ata_use_slave(0); }
+
 static void wr32(uint8_t *p, uint32_t v)
 {
     p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8);
@@ -83,16 +91,17 @@ static int ata_rw(int write, uint32_t lba, uint32_t nsect, void *buf)
     return 0;
 }
 
-int store_load(void)
+// read the store on one disk (1 = store drive, 0 = boot-disk seed) into
+// ramfs. Returns files restored, or -1 if there is no store there.
+static int load_from(int slave_disk)
 {
-    if (!ata_present())
-        return 0;
     static uint8_t sbsec[512];
+    ata_use_slave(slave_disk);
     if (ata_read(STORE_LBA, 1, sbsec) != 0)
         return -1;
     struct store_sb *sb = (struct store_sb *)sbsec;
     if (!sb_ok(sb))
-        return 0;                       // blank disk: nothing to restore
+        return -1;                      // blank disk: nothing to restore
 
     static uint8_t table[STORE_TABLE_SECTORS * 512];
     if (ata_rw(0, STORE_LBA + 1, STORE_TABLE_SECTORS, table) != 0)
@@ -118,23 +127,45 @@ int store_load(void)
     return count;
 }
 
+int store_load(void)
+{
+    if (!ata_present() && !ata_slave_present())
+        return 0;
+    int n = load_from(1);               // the store drive, if attached
+    if (n >= 0)
+        return n;
+    n = load_from(0);                   // else the boot-disk seed
+    if (n < 0)
+        return 0;                       // blank everywhere: fresh machine
+    if (ata_slave_present() && store_flush() >= 0)
+        migrated = 1;                   // first boot: filesystem moved onto
+    return n;                           // the store drive, saves survive
+}                                       // boot-image rebuilds from now on
+
+int store_migrated(void) { return migrated; }
+
 int store_files(void)
 {
-    if (!ata_present())
+    if (!ata_present() && !ata_slave_present())
         return 0;
     static uint8_t sbsec[512];
-    if (ata_read(STORE_LBA, 1, sbsec) != 0)
+    store_disk_on();
+    if (ata_read(STORE_LBA, 1, sbsec) != 0) {
+        store_disk_off();
         return 0;
+    }
     struct store_sb *sb = (struct store_sb *)sbsec;
-    if (!sb_ok(sb))
+    if (!sb_ok(sb)) {
+        store_disk_off();
         return 0;
-    return (int)sb->nfiles;
+    }
+    int n = (int)sb->nfiles;
+    store_disk_off();
+    return n;
 }
 
-int store_flush(void)
+static int flush_locked(void)
 {
-    if (!ata_present())
-        return -1;                      // -1: no drive
 
     // pass 1: size the data area so we only kmalloc what we need
     uint32_t need_total = 0;
@@ -230,4 +261,14 @@ int store_flush(void)
         kfree(buf);
     }
     return count;
+}
+
+int store_flush(void)
+{
+    if (!ata_present() && !ata_slave_present())
+        return -1;                      // -1: no drive
+    store_disk_on();
+    int n = flush_locked();
+    store_disk_off();
+    return n;
 }

@@ -15,5 +15,6 @@
 int store_load(void);                 // boot: returns files restored (-1 err)
 int store_flush(void);                // save ramfs -> DR1; returns file count
 int store_files(void);                // files in the on-disk store
+int store_migrated(void);             // 1 = filesystem moved to the store drive
 
 #endif

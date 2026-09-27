@@ -74,25 +74,34 @@ openos.img: bios/mbr.bin bios/stage2.bin kernel.flat store-seed.img
 	dd if=store-seed.img   of=openos.img bs=512 seek=2048   conv=notrunc status=none
 	test $$(stat -c%s kernel.flat) -le $$(( 512 * 1024 ))
 
-imgrun: openos.img
-	qemu-system-x86_64 -drive file=openos.img,format=raw,if=ide,index=0,media=disk
+# the store drive: created ONCE (seeded from the same files as the boot
+# image), then left alone forever -- `make` must never wipe saved files.
+store.img: store-seed.img
+	@test -f store.img || { \
+	    dd if=/dev/zero of=store.img bs=1M count=16 status=none; \
+	    dd if=store-seed.img of=store.img bs=512 seek=2048 conv=notrunc status=none; \
+	    echo "store.img: created + seeded (saved files live here now)"; }
 
-imgheadless: openos.img
+imgrun: openos.img store.img
 	qemu-system-x86_64 -drive file=openos.img,format=raw,if=ide,index=0,media=disk \
+	    -drive file=store.img,format=raw,if=ide,index=1,media=disk
+
+imgheadless: openos.img store.img
+	qemu-system-x86_64 -drive file=openos.img,format=raw,if=ide,index=0,media=disk \
+	    -drive file=store.img,format=raw,if=ide,index=1,media=disk \
 	    -display none -no-reboot -serial stdio
 
 # the real thing: boot OUR bootloader, no GRUB anywhere
-run: openos.img
-	qemu-system-x86_64 -drive file=openos.img,format=raw,if=ide,index=0,media=disk
+run: openos.img store.img
+	qemu-system-x86_64 -drive file=openos.img,format=raw,if=ide,index=0,media=disk \
+	    -drive file=store.img,format=raw,if=ide,index=1,media=disk
 
 # GRUB fallback for comparison
 isorun: openos.iso
 	qemu-system-x86_64 -cdrom openos.iso
 
-# DR1: a blank 16 MiB drive the OS can write to (survives across boots)
-store.img:
-	dd if=/dev/zero of=store.img bs=1M count=16
-
+# GRUB iso with the persistent store drive attached (slave here, since the
+# CD is not an IDE disk; the kernel finds the store on whichever disk has it)
 runstore: openos.iso store.img
 	qemu-system-x86_64 -cdrom openos.iso -hda store.img
 

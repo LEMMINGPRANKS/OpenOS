@@ -52,6 +52,8 @@ void kmain(unsigned long magic, unsigned long addr)
         while (n) term_putc(digits[--n]);
         term_puts(" files restored from disk\n");
     }
+    if (store_migrated())
+        term_puts("   DR1: filesystem moved onto the store drive\n");
 
     desktop_run();                     // boots into desktop (or plain shell)
 }

@@ -89,9 +89,17 @@ Never invent other naming schemes. New devices join these registers.
   WHOLE filesystem from DR1 (kmain prints "DR1: N files restored").
   `save` flushes back; verified in QEMU: install over TCP -> save ->
   cold reboot -> the downloaded file is the one that comes back.
-  GRUB ISO path keeps initrd as a fallback. Note: `make` rebuilds the
-  img from the seed, so a rebuild resets the store (a separate store
-  disk is the future fix).
+  GRUB ISO path keeps initrd as a fallback.
+- **v1.2.1** (2026-09-27) — **DONE**: the store drive. `store.img` is a
+  separate disk (IDE slave) that the filesystem LIVES on; created once
+  (seeded), never rebuilt by make, so saved files survive openos.img
+  rebuilds. ata.c gained slave-drive support (IDENTIFY both, select per
+  command); store.c prefers the store drive, falls back to the boot-disk
+  seed, and on first boot with a blank store drive MIGRATES the whole
+  filesystem across ("DR1: filesystem moved onto the store drive").
+  Verified: install-over-TCP -> save -> `make` rebuild -> boot -> the
+  downloaded file is still there. store.img is user data: never gitignore
+  it away, never clean it.
 - **v1.1.0** (BDFL decree, 2026-09-26) — **DONE**:
   - DR1: ATA PIO driver (kernel/ata.c) — IDENTIFY, LBA28 read/write with
     time-based BSY/DRQ waits (FLUSH CACHE in QEMU is a host fsync: it can
