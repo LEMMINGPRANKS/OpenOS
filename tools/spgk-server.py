@@ -16,7 +16,9 @@ answers with the refreshed page.
 """
 import os
 import time
+import json
 import urllib.parse
+import urllib.request
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 PKG_DIR = os.path.join(os.path.dirname(__file__), "..", "packages")
@@ -24,7 +26,7 @@ UPD_DIR = os.path.join(PKG_DIR, "updates")
 KDIR = os.path.join(PKG_DIR, "kernel")
 COMMENTS = os.path.join(PKG_DIR, "comments.txt")
 ROADMAP = os.path.join(PKG_DIR, "roadmap.txt")
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 
 
 def stable_version():
@@ -72,9 +74,88 @@ def append_line(path, text):
         f.write(f"[{stamp}] {text}\n")
 
 
+def esc(s):
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;"))
+
+
+def _ddg_part(q):
+    try:
+        url = "https://api.duckduckgo.com/?" + urllib.parse.urlencode(
+            {"q": q, "format": "json", "no_html": "1", "skip_disambig": "1"})
+        with urllib.request.urlopen(url, timeout=4) as r:
+            data = json.load(r)
+    except Exception as e:
+        return f"<p>(duckduckgo did not answer: {esc(e)})</p>", 0
+    out, hits = [], 0
+    if data.get("AbstractText"):
+        out.append(f"<p><b>{esc(data.get('AbstractSource') or 'Answer')}:</b> "
+                   f"{esc(data['AbstractText'])}</p>")
+        if data.get("AbstractURL"):
+            out.append(f"<p><a href='{esc(data['AbstractURL'])}'>read more about "
+                       f"{esc(q)}</a></p>")
+            hits += 1
+    rel = []
+    for t in data.get("RelatedTopics", []):
+        if isinstance(t, dict) and t.get("FirstURL") and t.get("Text"):
+            rel.append((t["FirstURL"], t["Text"]))
+        elif isinstance(t, dict):
+            for s in t.get("Topics", []):
+                if s.get("FirstURL") and s.get("Text"):
+                    rel.append((s["FirstURL"], s["Text"]))
+    for u, txt in rel[:8]:
+        out.append(f"<p><a href='{esc(u)}'>{esc(txt)}</a></p>")
+        hits += 1
+    return "".join(out), hits
+
+
+def _wiki_part(q):
+    try:
+        url = ("https://en.wikipedia.org/w/api.php?" + urllib.parse.urlencode(
+            {"action": "opensearch", "search": q, "limit": "5", "format": "json"}))
+        with urllib.request.urlopen(url, timeout=4) as r:
+            j = json.load(r)
+    except Exception as e:
+        return f"<p>(wikipedia did not answer: {esc(e)})</p>", 0
+    if not (len(j) == 4 and j[1]):
+        return "", 0
+    out = ["<h2>Wikipedia</h2>"]
+    for title, dsc, u in zip(j[1], j[2], j[3]):
+        label = title + (" -- " + dsc if dsc else "")
+        out.append(f"<p><a href='{esc(u)}'>{esc(label)}</a></p>")
+    return "".join(out), len(j[1])
+
+
+def web_search(q):
+    """The OpenOS search engine: DuckDuckGo instant answers + Wikipedia,
+    fetched in parallel so OpenOS never waits twice."""
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
+        f1 = ex.submit(_ddg_part, q)
+        f2 = ex.submit(_wiki_part, q)
+        dhtml, dhits = f1.result()
+        whtml, whits = f2.result()
+    parts = [f"<html><head><title>Search: {esc(q)}</title></head><body>",
+             f"<h1>Results for: {esc(q)}</h1>", dhtml, whtml]
+    if not (dhits + whits):
+        parts.append("<p>no results. try different words?</p>")
+    parts.append("<p><a href='/news'>back to OpenOS news</a></p></body></html>")
+    return "".join(parts).encode()
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        name = self.path.lstrip("/")
+        parsed = urllib.parse.urlparse(self.path)
+        name = parsed.path.lstrip("/")
+        if name == "search":
+            qs = urllib.parse.parse_qs(parsed.query)
+            q = (qs.get("q") or [""])[0].strip()
+            if q:
+                print(f"spgk: search: {q!r}")
+                send(self, web_search(q), "text/html")
+            else:
+                not_found(self, "search for what?")
+            return
         if name == "version":
             send(self, VERSION.encode(), "text/plain")
             return

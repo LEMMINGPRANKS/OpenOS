@@ -1,6 +1,6 @@
 #ifndef OPENOS_VERSION_H
 #define OPENOS_VERSION_H
 
-#define OS_VERSION "1.4.5"
+#define OS_VERSION "1.5.0"
 
 #endif

@@ -97,7 +97,7 @@ static int http_request(uint32_t ip, uint16_t port,
         return -1;
     uint32_t total = 0;
     uint64_t start = timer_uptime_ms();
-    while (total < cap && timer_uptime_ms() - start < 6000) {
+    while (total < cap && timer_uptime_ms() - start < 15000) {
         int n = tcp_recv(buf + total, cap - total, 1500);
         if (n > 0) {
             total += (uint32_t)n;

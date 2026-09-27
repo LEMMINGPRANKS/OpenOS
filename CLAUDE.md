@@ -216,8 +216,26 @@ Never invent other naming schemes. New devices join these registers.
   the colour attribute of the bottom row too (chars were cleared but old
   colours leaked through after scrolling -- the getspgk/update residue).
   Verified in QEMU by decoding screendumps against kernel/font.c glyphs.
-- **next**: a search engine (BDFL's own idea, posted from the Ideas
-  tab), bookmarks + history in the browser
+- **v1.5.0** (2026-09-27) — **DONE**: the search engine + bookmarks +
+  history. The Browser's address bar is an omnibar now: words with a
+  space always search, and a name that is neither local file nor server
+  page falls through to a search too. Search = the server's
+  /search?q=... (tools/spgk-server.py): DuckDuckGo instant answers +
+  Wikipedia opensearch, fetched in parallel (4s caps each) and returned
+  as simple clickable HTML; result links open over OpenOS's own
+  DNS + TCP stack. kernel/marks.c: bookmarks + history live as
+  /bookmarks.txt + /history.txt (ramfs, flushed to DR1, 24 entries
+  each, history newest-first, no duplicates). "home" — the new default
+  page, built and rendered locally with no network — lists both as
+  clickable links; "bm" bookmarks the page you are on; the omnibar
+  clears after every load so "home" can never eat the next word.
+  http.c response wait raised 6s -> 15s for slow real-world pages.
+  Verified in QEMU end to end: example.com load -> history noted,
+  bm -> bookmark saved, cat of both files, and searches for pokemon +
+  albert einstein from both the app and the shell fetch (real results
+  rendered, E = mc² and all).
+- **next**: a terminal app with colours and scrollback; a music player
+  that beeps tunes through the PC speaker
 
 ## Build & run
 
@@ -262,6 +280,7 @@ kernel/news.c/.h   # headless news fetch (the Internet app News tab uses http di
 kernel/dns.c/.h    # DNS resolver (A records over UDP, cache)
 kernel/internet.c/.h # The Internet app: browser/news/updates/comments/ideas tabs
 kernel/settings.c/.h # key=value settings store (/settings.txt -> DR1) + Settings app
+kernel/marks.c/.h   # bookmarks + history (/bookmarks.txt, /history.txt) + home page
 kernel/version.h   # single OS_VERSION string used by every banner
 kernel/filemgr.c/.h # Files app: keyboard + mouse file browser
 kernel/pci.c/.h    # PCI config-space scan, BAR decode

@@ -9,6 +9,7 @@
 #include "kupdate.h"
 #include "version.h"
 #include "apps.h"
+#include "marks.h"
 
 // The Internet app. Five tabs on row 0, a context line on row 1 (the
 // Browser's address bar or the Comments/Ideas post box), pages rendered
@@ -31,6 +32,7 @@ static char burl[LINE_MAX_CHARS];          // Browser address bar
 static int burl_n;
 static char cmsg[LINE_MAX_CHARS];          // Comments/Ideas post box
 static int cmsg_n;
+static char last_page[LINE_MAX_CHARS];     // the page currently shown (for bm)
 
 static int str_len(const char *s) { int n = 0; while (s[n]) n++; return n; }
 
@@ -177,7 +179,8 @@ static void set_line(char *dst, int *n, const char *s)
         k++;
     }
     dst[k] = 0;
-    *n = k;
+    if (n)
+        *n = k;
 }
 
 // a downloaded non-HTML file: install into ramfs so it shows up as a
@@ -237,16 +240,89 @@ static void net_got(struct console *con, const char *path,
     net_install(con, path, body, (uint32_t)n);
 }
 
-// a path on OUR package server (news, comments, updates...)
-static void server_page(struct console *con, const char *path)
+// a path on OUR package server (news, comments, updates...);
+// returns the body length or <=0 when there was no page
+static int server_page(struct console *con, const char *path)
 {
     static uint8_t body[HTTP_MAX];
     if (http_ensure_net() != 0)
-        return;
-    net_got(con, path, body, http_get(path, body, HTTP_MAX));
+        return -1;
+    int n = http_get(path, body, HTTP_MAX);
+    if (n <= 0)
+        return n;
+    net_got(con, path, body, n);
+    return n;
 }
 
+// %XX-encode a query so spaces and friends survive the trip
+static void urlencode(const char *in, char *out, int max)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    int n = 0;
+    for (int i = 0; in[i] && n < max - 3; i++) {
+        char c = in[i];
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+            (c >= '0' && c <= '9') || c == '-' || c == '_' ||
+            c == '.' || c == '~') {
+            out[n++] = c;
+        } else {
+            out[n++] = '%';
+            out[n++] = hex[(c >> 4) & 0xF];
+            out[n++] = hex[c & 0xF];
+        }
+    }
+    out[n] = 0;
+}
+
+static int has_space(const char *s)
+{
+    for (int i = 0; s[i]; i++)
+        if (s[i] == ' ')
+            return 1;
+    return 0;
+}
+
+// the search engine: ask our server, which searches the real internet
+static void search_for(struct console *con, const char *query)
+{
+    char path[LINE_MAX_CHARS * 3];
+    char q[(LINE_MAX_CHARS * 3) - 16];
+    urlencode(query, q, (int)sizeof q);
+    int k = 0;
+    const char *pre = "/search?q=";
+    for (int i = 0; pre[i]; i++) path[k++] = pre[i];
+    for (int i = 0; q[i]; i++) path[k++] = q[i];
+    path[k] = 0;
+
+    chrome_draw(con);
+    term_puts("searching for ");
+    term_puts(query);
+    term_puts("...\n");
+    if (server_page(con, path) <= 0) {
+        chrome_draw(con);
+        term_puts("(search failed -- is the server running?)\n");
+    }
+}
+
+// the local home page: bookmarks + recently visited, all clickable
+static void home_show(struct console *con)
+{
+    static char page[4096];
+    int n = marks_home_page(page, (int)sizeof page);
+    page_draw(con, page, (uint32_t)n);
+}
+
+static void browser_load_keep(struct console *con);
+
+// load what the address bar holds, then clear it: the next thing typed
+// starts fresh (like a real omnibar -- "home" must not eat the next word)
 static void browser_load(struct console *con)
+{
+    browser_load_keep(con);
+    set_line(burl, &burl_n, "");
+}
+
+static void browser_load_keep(struct console *con)
 {
     char u[LINE_MAX_CHARS];
     int un = burl_n;
@@ -257,6 +333,12 @@ static void browser_load(struct console *con)
         for (int i = 0; i <= un - 7; i++)
             u[i] = u[i + 7];
         un -= 7;
+    }
+
+    // words with a space in them are always a search
+    if (has_space(u)) {
+        search_for(con, u);
+        return;
     }
 
     // "host..." with a dot or port in it = a real address (name OR IP)
@@ -275,7 +357,24 @@ static void browser_load(struct console *con)
         term_puts("...\n");
         static uint8_t body[HTTP_MAX];
         int n = http_get_url(u, body, HTTP_MAX);
+        if (n > 0) {
+            set_line(last_page, 0, u);           // remember it for bm + history
+            marks_history_add(u);
+        }
         net_got(con, u, body, n);
+        return;
+    }
+
+    // home = our own start page (bookmarks + history)
+    if (starts_with(u, "home") && !u[4]) {
+        home_show(con);
+        return;
+    }
+    // bm = bookmark the page we are on, then show Home so it's visible
+    if (starts_with(u, "bm") && !u[2]) {
+        if (last_page[0])
+            marks_bookmark(last_page);
+        home_show(con);
         return;
     }
 
@@ -294,12 +393,21 @@ static void browser_load(struct console *con)
         return;
     }
     // then a page on the package server, so "news" just gets the news
-    server_page(con, fpath);
+    if (server_page(con, fpath) > 0) {
+        set_line(last_page, 0, u);
+        return;
+    }
+    // nothing by that name anywhere: search the internet for it
+    if (u[0])
+        search_for(con, u);
 }
 
 static void news_tab(struct console *con)
 {
-    server_page(con, "/news");
+    if (server_page(con, "/news") <= 0) {
+        chrome_draw(con);
+        term_puts("(the server did not answer with a page)\n");
+    }
 }
 
 static void post_line(struct console *con, const char *path)
@@ -396,7 +504,7 @@ void internet_app_open(struct console *con)
     if (arg && arg[0])
         set_line(burl, &burl_n, arg);
     else
-        set_line(burl, &burl_n, "demo.html");
+        set_line(burl, &burl_n, "home");
     browser_load(con);
 }
 
@@ -455,10 +563,17 @@ static void switch_tab(struct console *con, int t)
         news_tab(con);
     else if (tab == TAB_UPDATES)
         updates_show(con);
-    else if (tab == TAB_COMMENTS)
-        server_page(con, "/comments");
-    else if (tab == TAB_IDEAS)
-        server_page(con, "/roadmap");
+    else if (tab == TAB_COMMENTS) {
+        if (server_page(con, "/comments") <= 0) {
+            chrome_draw(con);
+            term_puts("(the server did not answer with a page)\n");
+        }
+    } else if (tab == TAB_IDEAS) {
+        if (server_page(con, "/roadmap") <= 0) {
+            chrome_draw(con);
+            term_puts("(the server did not answer with a page)\n");
+        }
+    }
 }
 
 void internet_app_click(struct console *con, int mx, int my)
