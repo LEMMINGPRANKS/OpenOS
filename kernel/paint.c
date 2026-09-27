@@ -276,12 +276,12 @@ void paint_input(struct console *con, char c)
     (void)con;
     if (!alive())
         return;
-    if (c == 's')
+    if (c == 's' || c == 'S')
         save();
-    else if (c == 'c') {
+    else if (c == 'c' || c == 'C') {
         canvas_fill(0xFFFFFF);
         blit();
-    } else if (c == 'e')
+    } else if (c == 'e' || c == 'E')
         eraser = !eraser;
     else if (c == '[') {
         if (size_sel > 0)

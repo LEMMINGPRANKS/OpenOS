@@ -14,7 +14,7 @@ OBJS = obj/boot.o obj/isr.o obj/term.o obj/idt.o obj/timer.o \
        obj/wm.o obj/apps.o obj/ramfs.o obj/files.o obj/path.o obj/js.o obj/ext.o obj/browser.o \
        obj/filemgr.o obj/pci.o obj/e1000.o obj/net.o obj/tcp.o \
        obj/getspgk.o obj/http.o obj/news.o obj/desktop.o obj/kmain.o obj/ata.o obj/tar.o obj/store.o \
-       obj/png.o obj/paint.o
+       obj/png.o obj/paint.o obj/kupdate.o obj/part.o obj/dns.o obj/internet.o
 
 all: openos.iso
 
@@ -24,7 +24,7 @@ obj/boot.o: boot/boot.asm | obj
 obj/isr.o: kernel/isr.asm | obj
 	$(AS) $(ASFLAGS) -o $@ $<
 
-obj/%.o: kernel/%.c | obj
+obj/%.o: kernel/%.c kernel/version.h | obj
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 obj:
@@ -62,26 +62,46 @@ bios/stage2.bin: bios/stage2.asm bios/layout.inc kernel.flat
 	    -D KERNEL_SECTORS=$(shell echo $$(( ($$(stat -c%s kernel.flat) + 511) / 512 ))) \
 	    -D BSS_END_OFF=$(shell printf '%d' $$(( $$(nm kernel.bin | awk '/ B __kernel_end$$/ {print "0x"$$1}') - 0x100000 )))
 
+bios/other.bin: bios/other.asm
+	$(AS) -f bin -I bios/ -o $@ bios/other.asm
+
 # the DR1 seed: every initrd/ file pre-packed as the on-disk store, so
 # OpenOS boots with its whole filesystem on DR1 (no initramfs in the boot)
 store-seed.img: tools/mkstore.py $(INITRD_FILES)
 	python3 tools/mkstore.py initrd store-seed.img
 
-openos.img: bios/mbr.bin bios/stage2.bin kernel.flat store-seed.img
-	dd if=/dev/zero of=openos.img bs=1M count=16 status=none
-	dd if=bios/mbr.bin     of=openos.img                    conv=notrunc status=none
-	dd if=bios/stage2.bin  of=openos.img bs=512 seek=1      conv=notrunc status=none
-	dd if=kernel.flat      of=openos.img bs=512 seek=128    conv=notrunc status=none
-	dd if=store-seed.img   of=openos.img bs=512 seek=2048   conv=notrunc status=none
-	test $$(stat -c%s kernel.flat) -le $$(( 512 * 1024 ))
+# publish the current kernel to the spgk server's packages/ dir, ready for
+# `update kernel` / the Update Manager to fetch (server serves packages/*)
+publish-kernel: kernel.flat
+	mkdir -p packages/kernel
+	cp kernel.flat packages/kernel/kernel.flat
+	printf 'version=%s\nsize=%s\nentry=%s\nbss=%s\n' \
+	    $$(sed -n 's/^#define OS_VERSION "\(.*\)"/\1/p' kernel/version.h) \
+	    $$(stat -c%s kernel.flat) \
+	    $$(printf '%d' $$(( $$(nm kernel.bin | awk '/ T _start$$/ {print "0x"$$1}') - 0x100000 ))) \
+	    $$(printf '%d' $$(( $$(nm kernel.bin | awk '/ B __kernel_end$$/ {print "0x"$$1}') - 0x100000 ))) \
+	    > packages/kernel/manifest.txt
+	@echo "published kernel to packages/kernel/ (server: python3 tools/spgk-server.py)"
+
+# dual-boot boot image: real partition table, fake-other-OS partition,
+# OpenOS partition (type 0x7F) holding stage2 + kernel slot A + store seed
+openos.img: bios/mbr.bin bios/stage2.bin bios/other.bin kernel.flat store-seed.img tools/mkdisk.py
+	python3 tools/mkdisk.py boot openos.img bios/mbr.bin bios/stage2.bin \
+	    bios/other.bin kernel.flat store-seed.img
+	test $$(stat -c%s kernel.flat) -le $$(( 256 * 1024 ))
 
 # the store drive: created ONCE (seeded from the same files as the boot
 # image), then left alone forever -- `make` must never wipe saved files.
-store.img: store-seed.img
-	@test -f store.img || { \
-	    dd if=/dev/zero of=store.img bs=1M count=16 status=none; \
-	    dd if=store-seed.img of=store.img bs=512 seek=2048 conv=notrunc status=none; \
-	    echo "store.img: created + seeded (saved files live here now)"; }
+# An old unpartitioned store.img gets migrated in place (saved files keep
+# working; only the partition table wrapper is added).
+store.img: store-seed.img tools/mkdisk.py
+	@if [ -f store.img ]; then \
+	    python3 tools/mkdisk.py migrate store.img && \
+	      echo "store.img: migrated to the partitioned layout (if it was old-style)"; \
+	else \
+	    python3 tools/mkdisk.py store store.img store-seed.img && \
+	      echo "store.img: created + seeded (saved files live here now)"; \
+	fi
 
 imgrun: openos.img store.img
 	qemu-system-x86_64 -drive file=openos.img,format=raw,if=ide,index=0,media=disk \

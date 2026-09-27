@@ -1,5 +1,6 @@
 #include "store.h"
 #include "ata.h"
+#include "part.h"
 #include "ramfs.h"
 #include "heap.h"
 
@@ -97,14 +98,14 @@ static int load_from(int slave_disk)
 {
     static uint8_t sbsec[512];
     ata_use_slave(slave_disk);
-    if (ata_read(STORE_LBA, 1, sbsec) != 0)
+    if (ata_read(disk_lba(STORE_LBA), 1, sbsec) != 0)
         return -1;
     struct store_sb *sb = (struct store_sb *)sbsec;
     if (!sb_ok(sb))
         return -1;                      // blank disk: nothing to restore
 
     static uint8_t table[STORE_TABLE_SECTORS * 512];
-    if (ata_rw(0, STORE_LBA + 1, STORE_TABLE_SECTORS, table) != 0)
+    if (ata_rw(0, disk_lba(STORE_LBA + 1), STORE_TABLE_SECTORS, table) != 0)
         return -1;
 
     int count = 0;
@@ -116,7 +117,7 @@ static int load_from(int slave_disk)
         uint8_t *buf = kmalloc(e->sect * 512);
         if (!buf)
             break;
-        if (ata_rw(0, e->lba, e->sect, buf) == 0 &&
+        if (ata_rw(0, disk_lba(e->lba), e->sect, buf) == 0 &&
             buf[0] == 'W' && buf[1] == 'M' && buf[2] == 'B' && buf[3] == 'G' &&
             buf[4] == WMBG_VERSION && buf[5] == WMBG_METHOD_STORE &&
             rd64(buf + 6) == e->size &&
@@ -150,7 +151,7 @@ int store_files(void)
         return 0;
     static uint8_t sbsec[512];
     store_disk_on();
-    if (ata_read(STORE_LBA, 1, sbsec) != 0) {
+    if (ata_read(disk_lba(STORE_LBA), 1, sbsec) != 0) {
         store_disk_off();
         return 0;
     }
@@ -244,17 +245,17 @@ static int flush_locked(void)
         sb->magic[i] = STORE_MAGIC[i];
     sb->version = 1;
     sb->nfiles = count;
-    if (ata_write(STORE_LBA, 1, sbsec) != 0) {
+    if (ata_write(disk_lba(STORE_LBA), 1, sbsec) != 0) {
         if (buf) kfree(buf);
         return -4;                      // -4: superblock write failed
     }
-    if (ata_rw(1, STORE_LBA + 1, STORE_TABLE_SECTORS, table) != 0) {
+    if (ata_rw(1, disk_lba(STORE_LBA + 1), STORE_TABLE_SECTORS, table) != 0) {
         if (buf) kfree(buf);
         return -5;                      // -5: table write failed
     }
     if (buf) {
         uint32_t nsect = (used + 511) / 512;
-        if (nsect && ata_rw(1, STORE_DATA_LBA, nsect, buf) != 0) {
+        if (nsect && ata_rw(1, disk_lba(STORE_DATA_LBA), nsect, buf) != 0) {
             kfree(buf);
             return -6;                  // -6: data write failed
         }

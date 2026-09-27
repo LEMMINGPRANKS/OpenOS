@@ -10,13 +10,20 @@ Special paths: /index lists every file in packages/, /news serves
 packages/news.html, /updates is the feature-update index page,
 /updates/<name> downloads an update from packages/updates/, and
 /version is the current feature-pack version.
+/comments and /roadmap power the Internet app's Comments + Ideas tabs:
+GET renders them as HTML, POST appends a line (form field "text") and
+answers with the refreshed page.
 """
 import os
+import time
+import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 PKG_DIR = os.path.join(os.path.dirname(__file__), "..", "packages")
 UPD_DIR = os.path.join(PKG_DIR, "updates")
-VERSION = "1.0.3"
+COMMENTS = os.path.join(PKG_DIR, "comments.txt")
+ROADMAP = os.path.join(PKG_DIR, "roadmap.txt")
+VERSION = "1.4.0"
 
 
 def send(self, body, kind):
@@ -33,6 +40,26 @@ def not_found(self, msg):
     self.send_header("Content-Length", str(len(body)))
     self.end_headers()
     self.wfile.write(body)
+
+
+def render_list(path, title, post_to, subtitle):
+    lines = []
+    if os.path.isfile(path):
+        with open(path, encoding="utf-8") as f:
+            lines = [l.rstrip("\n") for l in f if l.strip()]
+    rows = "\n".join(f"<li>{l}</li>" for l in lines) or "<li>(nothing yet)</li>"
+    return (f"<html><head><title>{title}</title></head><body>"
+            f"<h1>{title}</h1>"
+            f"<p>{subtitle}. POST text=... here to add yours.</p>"
+            f"<ul>{rows}</ul>"
+            f"<p><a href='/news'>Back to the news</a></p>"
+            f"</body></html>").encode()
+
+
+def append_line(path, text):
+    stamp = time.strftime("%Y-%m-%d %H:%M")
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(f"[{stamp}] {text}\n")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -89,12 +116,42 @@ class Handler(BaseHTTPRequestHandler):
             with open(path, "rb") as f:
                 send(self, f.read(), "text/html")
             return
+        if name == "comments":
+            send(self, render_list(COMMENTS, "Comments", "/comments",
+                                   "what people said about new updates"),
+                 "text/html")
+            return
+        if name == "roadmap":
+            send(self, render_list(ROADMAP, "Ideas to improve OpenOS",
+                                   "/roadmap", "the plan + fresh ideas"),
+                 "text/html")
+            return
         path = os.path.normpath(os.path.join(PKG_DIR, name))
         if not path.startswith(os.path.abspath(PKG_DIR)) or not os.path.isfile(path):
             not_found(self, "no such package")
             return
         with open(path, "rb") as f:
             send(self, f.read(), "application/octet-stream")
+
+    def do_POST(self):
+        name = self.path.lstrip("/")
+        if name not in ("comments", "roadmap"):
+            not_found(self, "no such page")
+            return
+        length = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(length).decode("utf-8", "replace")
+        form = urllib.parse.parse_qs(body)
+        text = (form.get("text") or [""])[0].strip()[:200]
+        if text:
+            append_line(COMMENTS if name == "comments" else ROADMAP, text)
+            print(f"spgk: new {name} entry: {text!r}")
+            page = render_list(COMMENTS if name == "comments" else ROADMAP,
+                               "Comments" if name == "comments"
+                               else "Ideas to improve OpenOS",
+                               "/" + name, "thanks!")
+            send(self, page, "text/html")
+        else:
+            not_found(self, "empty text")
 
     def log_message(self, fmt, *args):
         print("spgk:", fmt % args)

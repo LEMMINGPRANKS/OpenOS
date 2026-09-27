@@ -20,4 +20,13 @@ int http_ensure_net(void);
 // -2 the server answered but not with 200
 int http_get(const char *path, uint8_t *body, uint32_t max);
 
+// GET a full URL ("example.com/", "10.0.2.2:8080/index", "http://..." ok):
+// names are resolved with DNS first. Same return codes as http_get.
+int http_get_url(const char *url, uint8_t *body, uint32_t max);
+
+// POST "text=..." to our own server; returns the reply body (the server
+// answers with the refreshed page)
+int http_post(const char *path, const char *text,
+              uint8_t *out, uint32_t max);
+
 #endif

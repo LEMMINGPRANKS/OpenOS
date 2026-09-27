@@ -1,18 +1,18 @@
 <html>
 <head><title>OpenOS News</title></head>
 <body>
-<h1>OpenOS 1.0.2 is out!</h1>
-<p>Shipped today over OpenOS's very own network stack -- no GitHub needed.</p>
-<h2>What's new in 1.0.2</h2>
+<h1>OpenOS 1.4.0 is out!</h1>
+<p>DUAL BOOT! OpenOS now shares the drive like a grown-up OS.</p>
+<h2>What's new in 1.4.0</h2>
 <ul>
-<li>Directories: cd, pwd, and folders in the Files app</li>
-<li>OpenJS: a JavaScript interpreter built in the kernel -- run demo.js!</li>
-<li>Double-click files on the desktop or in Files to open or run them</li>
-<li>HTML support: pages render in the new Browser window</li>
-<li>This News app, fetched live from the update server</li>
+<li>A REAL MBR partition table -- OpenOS lives in its own partition (type 0x7F)</li>
+<li>Boot menu: pick OpenOS or the other OS (3 second timeout, key 2 to chainload)</li>
+<li>Everything moved inside the partition: stage2, A/B kernel slots, the store</li>
+<li>A/B kernel updates still work end to end, with automatic rollback</li>
+<li>Saved files still survive reboot -- now partition-relative too</li>
 </ul>
 <h2>Coming next</h2>
-<p>v1.1.0: the full from-scratch web browser.</p>
+<p>The Internet app: browser + news + updates, all in one window.</p>
 <p><a href="http://10.0.2.2:8080/index">Package list</a></p>
 </body>
 </html>

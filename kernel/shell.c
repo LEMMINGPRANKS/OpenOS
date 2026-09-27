@@ -16,12 +16,16 @@
 #include "apps.h"
 #include "paint.h"
 #include "http.h"
+#include "net.h"
+#include "dns.h"
 #include "desktop.h"
 #include "version.h"
 #include "mm.h"
 #include "heap.h"
 #include "ata.h"
+#include "part.h"
 #include "store.h"
+#include "kupdate.h"
 
 #define LINE_MAX 128
 #define SHELL_STATES 5          // [0] = boot/VGA console, rest = windows
@@ -61,6 +65,13 @@ static int strcmp(const char *a, const char *b)
 {
     while (*a && *a == *b) { a++; b++; }
     return (uint8_t)*a - (uint8_t)*b;
+}
+
+static void print_hex8(uint8_t v)
+{
+    const char *hex = "0123456789ABCDEF";
+    term_putc(hex[v >> 4]);
+    term_putc(hex[v & 0xF]);
 }
 
 static struct shell_state *state_for(struct console *con)
@@ -119,15 +130,19 @@ static void cmd_help(void)
     term_puts("  ls            list this directory (colour-coded)\n");
     term_puts("  cd <dir>      change directory (cd .. goes up, cd goes home)\n");
     term_puts("  pwd           print the current directory\n");
-    term_puts("  cat <file>    read a file (ramfs first, then IR2)\n");
+    term_puts("  cat <file>    read a file (DR1 first, then IR2)\n");
     term_puts("  run <file.js> execute an OpenJS script\n");
     term_puts("  file <name>   show a file's type (.txt .cpp .iso ...)\n");
     term_puts("  getspgk list  packages on the spgk server\n");
     term_puts("  getspgk install <pkg>  download a package into ramfs\n");
     term_puts("  getspgk server <ip>    use a real LAN machine as the server\n");
     term_puts("  netinfo       show network info (ip, mac)\n");
-    term_puts("  news          fetch the latest OpenOS updates over TCP\n");
+    term_puts("  dns <name>    look up a name (try: dns example.com)\n");
+    term_puts("  fetch <url>   download a page (try: fetch example.com/)\n");
+    term_puts("  news          the News, in a window\n");
+    term_puts("  internet      the Internet app (browser + news + updates + comments)\n");
     term_puts("  update        install fresh features from the update server\n");
+    term_puts("  update kernel install a new KERNEL into the other slot (A/B)\n");
     term_puts("  dev           show device registers (DR/IR/UR)\n");
     term_puts("  disk          DR1 info ('disk test' writes + reads a sector)\n");
     term_puts("  save          copy all ramfs files to DR1 (survives reboot)\n");
@@ -212,6 +227,28 @@ static void cmd_disk(char *arg)
     term_puts("  (");
     print_u64(ata_sectors() / 2048);
     term_puts(" MB)\n");
+
+    // the MBR partition table (dual boot: we share the drive)
+    static uint8_t mbr[512];
+    if (ata_read(0, 1, mbr) == 0 && mbr[510] == 0x55 && mbr[511] == 0xAA) {
+        term_puts("  partitions:\n");
+        for (int i = 0; i < 4; i++) {
+            uint8_t type = mbr[446 + i * 16 + 4];
+            if (!type)
+                continue;
+            const uint8_t *p = mbr + 446 + i * 16 + 8;
+            uint32_t start = (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+                             ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+            term_puts("    ");
+            term_putc('1' + i);
+            term_puts(": type 0x");
+            print_hex8(type);
+            term_puts(start == part_base() ? "  <-- OpenOS lives here  " : "  at LBA ");
+            if (start != part_base())
+                print_u64(start);
+            term_putc('\n');
+        }
+    }
     term_puts("  try 'disk test' to prove the metal\n");
 }
 
@@ -244,8 +281,12 @@ static void cmd_banner(void)
 }
 
 // the updater: ask the server what's new and install it live
-static void cmd_update(void)
+static void cmd_update(char *arg)
 {
+    if (arg && !strcmp(arg, "kernel")) {     // system-level: new kernel -> A/B slot
+        kupdate_install();
+        return;
+    }
     term_puts("checking the update server...\n");
     if (http_ensure_net() != 0)
         return;
@@ -446,7 +487,7 @@ void shell_execute(char *cmdline)
             term_puts(fl[i].name);
             term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
             term_puts("  [");
-            term_puts(fl[i].source == FS_RAMFS ? "ramfs" : "IR2");
+            term_puts(fl[i].source == FS_RAMFS ? "DR1" : "IR2");
             term_puts("] ");
             print_u64(fl[i].size);
             term_putc('\n');
@@ -494,13 +535,67 @@ void shell_execute(char *cmdline)
         term_putc('\n');
     }
     else if (!strcmp(cmdline, "getspgk")) cmd_getspgk(arg);
+    else if (!strcmp(cmdline, "fetch")) {
+        if (!arg) { term_puts("usage: fetch <name/path>\n"); return; }
+        static uint8_t buf[HTTP_MAX];
+        int n = http_get_url(arg, buf, HTTP_MAX);
+        if (n == -1) {
+            term_puts("fetch: could not reach it\n");
+            return;
+        }
+        if (n == -2) {
+            term_puts("fetch: the server said no (404?)\n");
+            return;
+        }
+        if (n >= (int)sizeof buf - 1)
+            n = (int)sizeof buf - 1;
+        buf[n] = 0;
+        term_puts((const char *)buf);
+        if (n && buf[n - 1] != '\n')
+            term_putc('\n');
+        term_puts("-- ");
+        print_u64((uint64_t)n);
+        term_puts(" bytes\n");
+    }
     else if (!strcmp(cmdline, "netinfo")) cmd_netinfo();
-    else if (!strcmp(cmdline, "update")) cmd_update();
+    else if (!strcmp(cmdline, "dns")) {
+        if (!arg) { term_puts("usage: dns <name>\n"); return; }
+        if (http_ensure_net() != 0)
+            return;
+        char s[16];
+        net_ip_str(dns_server(), s);
+        term_puts("asking ");
+        term_puts(s);
+        term_puts(" for ");
+        term_puts(arg);
+        term_puts("...\n");
+        uint32_t ip = dns_resolve(arg);
+        if (!ip) {
+            term_puts("dns: no answer for ");
+            term_puts(arg);
+            term_putc('\n');
+            return;
+        }
+        net_ip_str(ip, s);
+        term_puts(arg);
+        term_puts(" is at ");
+        term_puts(s);
+        term_putc('\n');
+    }
+    else if (!strcmp(cmdline, "update")) cmd_update(arg);
     else if (!strcmp(cmdline, "news")) {
-        if (gfx_available())
-            wm_open(APP_NEWS, 60, 40, 432, 424);
-        else
+        if (gfx_available()) {
+            app_set_arg("");
+            wm_open(APP_INTERNET, 60, 40, 432, 424);
+        } else
             news_fetch(term_active());  // headless: straight to the console
+    }
+    else if (!strcmp(cmdline, "internet")) {
+        if (gfx_available()) {
+            app_set_arg("");
+            wm_open(APP_INTERNET, 60, 40, 432, 424);
+        } else
+            term_puts("internet needs the desktop (framebuffer)\n");
     }
     else if (!strcmp(cmdline, "paint")) {
         if (gfx_available()) {

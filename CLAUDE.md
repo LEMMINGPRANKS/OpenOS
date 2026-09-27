@@ -132,7 +132,26 @@ Never invent other naming schemes. New devices join these registers.
   - The disk-layout law (bios/layout.inc, ONE law for MBR/stage2/Makefile):
     LBA 0 MBR, 1-127 stage2, 128-1151 kernel.flat, 1152-2047 free (was
     initrd.tar until v1.2.0), 2048-8191 DR1 store (superblock + table +
-    WMBG files; 4 MiB since v1.3.0)
+    WMBG files; 4 MiB since v1.3.0) — SUPERSEDED in v1.4.0 by the
+    partition-relative law below
+- **v1.4.0** (2026-09-27) — **DONE**: DUAL BOOT. The drive now has a REAL
+  MBR partition table; OpenOS lives inside its own partition (type byte
+  0x7F, bootable) and every on-disk structure is PARTITION-RELATIVE:
+  +0 stage2 (stage2 IS the partition boot sector: "OPOS2" magic in the
+  first 8 bytes, entry at +8), +127 A/B header, +128/+640 kernel slots
+  A/B, +2048 store. The MBR scans its own table for type 0x7F, verifies
+  the magic, loads stage2 from inside the partition, hands the partition
+  base LBA over in DI:BP. stage2 draws a boot menu (3s timeout, default
+  OpenOS; key 2 chainloads the first other partition: reads its sector 0
+  to 0x7C00 and far-jumps, DL = boot drive). kernel/part.c resolves
+  part_base() per drive; store/kupdate/shell use disk_lba(rel). Images
+  are assembled by tools/mkdisk.py (boot / store / migrate modes); the
+  test "other OS" partition (type 0x83) starts at LBA 2048 so the
+  post-MBR gap stays untouched for real GRUB. Verified in QEMU: default
+  boot, menu chainload, save/reboot persistence, and the full A/B kernel
+  update incl. confirm (a staged-and-hung candidate rolls back on the
+  next boot via the "booting" flag). Real pocketdev disk install is a
+  LATER milestone with Robin (resize + backups first).
 - **next**: full from-scratch web browser (DNS -> HTTP -> HTML subset ->
   WM window; Electron is impossible — it needs a host OS underneath)
 

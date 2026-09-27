@@ -28,8 +28,18 @@ E820_MAX       equ 128               ; entries we accept
 bits 16
 org STAGE2_ADDR
 
+; partition boot header: the MBR verifies this magic before booting us.
+; entry point is STAGE2_ENTRY (offset 8), straight past it.
+    db "OPOS2", 0, 0, 0
+
 start:
     mov [boot_drive], dl
+    mov [part_base], di               ; 32-bit partition base LBA from MBR
+    mov [part_base+2], bp
+
+    ; --- dual boot menu (OpenBIOS owns the MBR, stage2 draws the menu)
+    call boot_menu
+
     mov si, msg_stage2
     call puts
 
@@ -97,15 +107,96 @@ start:
     mov si, msg_mem
     call puts
 
-    ; --- load the kernel: KERNEL_LBA -> KERNEL_LOAD ---
+    ; --- pick the kernel slot from the A/B header (self-update bookkeeping)
+    ; defaults first: the values the Makefile baked in for THIS image
+    mov word [chosen_sectors], KERNEL_SECTORS
+    mov dword [chosen_entry], ENTRY_OFF
+    mov dword [chosen_bss], BSS_END_OFF
+    mov byte [chosen_slot], 0
+    mov byte [chosen_cand], 0
+    mov ebx, [part_base]                ; header sector -> KHDR_BUF
+    add ebx, KHDR_LBA
+    mov cx, 1
+    mov ax, KHDR_BUF >> 4
+    mov es, ax
+    xor di, di
+    call read_disk
+    xor ax, ax                          ; gs = 0 so we can read KHDR_BUF
+    mov gs, ax
+    cmp dword [gs:KHDR_BUF], KSLOT_MAGIC
+    jne .khdr_done                      ; fresh image: baked defaults
+
+    mov eax, [gs:KHDR_BUF+20]           ; cand_slot
+    cmp eax, 2                          ; 0=A 1=B, anything else = none
+    jae .khdr_rollback_chk
+    cmp dword [gs:KHDR_BUF+36], 0       ; already attempting a candidate?
+    jne .khdr_rollback_chk
+    ; stage the candidate: mark "booting" FIRST, so if it hangs we fall
+    ; back to the last good kernel on the next reboot
+    mov dword [gs:KHDR_BUF+36], 1
+    call write_hdr
+    jc .khdr_ok                         ; couldn't mark: don't risk it
+    mov byte [chosen_cand], 1
+    mov eax, [gs:KHDR_BUF+20]
+    mov [chosen_slot], al
+    mov eax, [gs:KHDR_BUF+24]
+    mov [chosen_sectors], ax
+    mov eax, [gs:KHDR_BUF+28]
+    cmp eax, 0xFFFFFFFF
+    je .khdr_ok                         ; incomplete entry: treat as bad
+    mov [chosen_entry], eax
+    mov eax, [gs:KHDR_BUF+32]
+    cmp eax, 0xFFFFFFFF
+    je .khdr_ok
+    mov [chosen_bss], eax
+    jmp .khdr_done
+.khdr_rollback_chk:
+    cmp dword [gs:KHDR_BUF+36], 0
+    je .khdr_ok
+    ; we marked booting last time but the kernel never confirmed itself:
+    ; the candidate is bad -- scrap it and boot the last good kernel
+    mov dword [gs:KHDR_BUF+20], 0xFFFFFFFF
+    mov dword [gs:KHDR_BUF+36], 0
+    call write_hdr
+    mov si, msg_rollback
+    call puts
+.khdr_ok:
+    cmp dword [gs:KHDR_BUF+4], 2        ; ok_slot valid?
+    jae .khdr_done
+    mov eax, [gs:KHDR_BUF+4]
+    mov [chosen_slot], al
+    mov eax, [gs:KHDR_BUF+8]
+    test eax, eax
+    jz .khdr_done                       ; sectors 0 = keep baked defaults
+    mov [chosen_sectors], ax
+    mov eax, [gs:KHDR_BUF+12]
+    cmp eax, 0xFFFFFFFF
+    je .khdr_done
+    mov [chosen_entry], eax
+    mov eax, [gs:KHDR_BUF+16]
+    cmp eax, 0xFFFFFFFF
+    je .khdr_done
+    mov [chosen_bss], eax
+.khdr_done:
+
+    ; --- load the chosen kernel slot -> KERNEL_LOAD ---
     mov si, msg_kernel
     call puts
-    mov ebx, KERNEL_LBA
-    mov cx, KERNEL_SECTORS
+    movzx eax, byte [chosen_slot]
+    shl eax, 9                          ; * KSLOT_SECT (512)
+    add eax, KSLOT_A_LBA
+    add eax, [part_base]
+    mov ebx, eax
+    mov cx, [chosen_sectors]
     mov ax, KERNEL_LOAD >> 4
     mov es, ax
     xor di, di
     call read_disk
+    mov al, [chosen_slot]               ; say which slot booted
+    add al, 'A'
+    call putc
+    mov si, msg_crlf
+    call puts
 
     mov si, msg_pm
     call puts
@@ -222,6 +313,22 @@ read_disk:
 .done:
     ret
 
+; write the A/B header sector back (KHDR_BUF -> PART_BASE+KHDR_LBA).
+; cf set = error.
+write_hdr:
+    mov word [dap_count], 1
+    mov word [dap_off], KHDR_BUF & 0xF
+    mov word [dap_seg], KHDR_BUF >> 4
+    mov eax, [part_base]
+    add eax, KHDR_LBA
+    mov [dap_lba], eax
+    mov dword [dap_lba+4], 0
+    mov si, dap
+    mov dl, [boot_drive]
+    mov ax, 0x4300                      ; extended write, no verify
+    int 0x13
+    ret
+
 puts:
     lodsb
     test al, al
@@ -259,6 +366,97 @@ put_nib:
     int 0x10
     ret
 
+; --- dual boot menu -------------------------------------------------------
+; Lists OpenOS (1, the default) plus every non-empty non-OpenOS partition
+; from the MBR table copy at PARTTAB (keys 2..4). ~3 s BIOS-tick timeout,
+; then the default boots. Another partition = chainload: read its first
+; sector to PBR_LOAD and jump with DL = drive, DS:SI -> its table entry.
+boot_menu:
+    mov cx, 4
+    xor dx, dx                       ; others found so far
+    mov si, PARTTAB
+    mov di, menu_others
+.scan:
+    mov al, [si+4]                   ; type byte
+    test al, al
+    jz .next                         ; empty entry
+    cmp al, PART_TYPE_OPENOS
+    je .next                         ; ours: not a menu option
+    mov ax, 4
+    sub ax, cx                       ; entry number (0-3)
+    mov [di], al
+    inc di
+    inc dx
+.next:
+    add si, 16
+    loop .scan
+    mov [menu_count], dl
+    test dx, dx
+    jz .ret                          ; no other partitions: straight to OpenOS
+
+    mov si, msg_menu
+    call puts
+
+    push ds                          ; wait for a key, BIOS ticks as the clock
+    mov ax, 0x0040
+    mov ds, ax
+    mov ax, [0x006C]
+    add ax, MENU_TICKS               ; deadline (midnight wrap: vanishingly rare)
+    mov bx, ax
+.wait:
+    mov ah, 1
+    int 0x16
+    jz  .tick
+    mov ah, 0                        ; consume the keypress
+    int 0x16
+    jmp .got
+.tick:
+    mov ax, [0x006C]
+    cmp ax, bx
+    jb .wait                         ; while now < deadline (wrap-safe enough)
+    mov al, '1'                      ; timeout: default OpenOS
+.got:
+    pop ds
+    cmp al, '1'
+    je .ret
+    cmp al, '2'
+    jb .ret
+    cmp al, '4'
+    ja .ret
+    sub al, '2'
+    cmp al, [menu_count]
+    jae .ret                         ; no such entry: default
+    mov bx, menu_others
+    xlat                             ; al = partition entry number (ds = 0)
+    mov cl, 16
+    mul cl                           ; ax = entry * 16
+    mov si, PARTTAB
+    add si, ax                       ; ds:si -> the partition entry
+    push si                          ; puts trashes si AND bx (teletype page)
+
+    mov si, msg_other_boot
+    call puts
+
+    pop si
+    mov eax, [si+8]                  ; that partition's start LBA
+    mov dword [dap_lba], eax
+    mov dword [dap_lba+4], 0
+    mov word [dap_count], 1
+    mov word [dap_off], 0            ; seg:off pair: 0x7C0:0 -> linear 0x7C00
+    mov word [dap_seg], PBR_LOAD >> 4
+    mov bx, si                       ; keep the entry for the handover
+    mov si, dap
+    mov dl, [boot_drive]
+    mov ah, 0x42
+    int 0x13
+    mov [disk_err], ah               ; err_disk prints this
+    jc  err_disk
+    mov dl, [boot_drive]
+    mov si, bx                       ; chainload law: DS:SI -> table entry
+    jmp 0x0000:PBR_LOAD
+.ret:
+    ret
+
 err_disk:
     mov si, msg_disk
     call puts
@@ -289,17 +487,28 @@ dap_seg:   dw 0
 dap_lba:   dq 0
 
 boot_drive:  db 0
+part_base:   dd 0                   ; OpenOS partition start LBA (from MBR)
+menu_others: db 0, 0, 0             ; entry numbers of the other partitions
+menu_count:  db 0
 e820_count:  dd 0
 disk_err:    db 0
 vbe_want:    db 32
 vbe_found:   dw 0
 vbe_mode:    dw 0
 vbe_ok:      db 0
+chosen_sectors: dw KERNEL_SECTORS
+chosen_entry:   dd ENTRY_OFF
+chosen_bss:     dd BSS_END_OFF
+chosen_slot:    db 0
+chosen_cand:    db 0
 
-msg_stage2: db "OpenBIOS stage2", 13, 10, 0
-msg_mem:    db " memory mapped", 13, 10, 0
-msg_kernel: db " loading kernel", 13, 10, 0
-msg_pm:     db " protected mode...", 13, 10, 0
+msg_stage2:   db "OpenBIOS stage2", 13, 10, 0
+msg_menu:     db "OpenBIOS boot menu", 13, 10, " 1) OpenOS", 13, 10, " 2) other OS (Linux)", 13, 10, 0
+msg_other_boot: db " chainloading the other OS...", 13, 10, 0
+msg_mem:      db " memory mapped", 13, 10, 0
+msg_kernel:   db " loading kernel slot ", 0
+msg_rollback: db " kernel update failed -- rolling back", 13, 10, 0
+msg_pm:       db " protected mode...", 13, 10, 0
 msg_novbe:  db " no VBE -- serial shell boot", 13, 10, 0
 msg_disk:   db "disk read failed 0x", 0
 msg_crlf:   db 13, 10, 0
@@ -316,15 +525,21 @@ pm_start:
     mov gs, ax
     mov esp, 0x7FF00                 ; scratch stack below the initrd staging
 
-    ; copy kernel.flat up to its link address
+    ; copy kernel.flat up to its link address (runtime slot size)
     mov esi, KERNEL_LOAD
     mov edi, KERNEL_ADDR
-    mov ecx, KERNEL_SECTORS * 128    ; sectors -> dwords
+    movzx ecx, word [chosen_sectors]
+    shl ecx, 7                       ; sectors -> dwords
     rep movsd
 
     ; zero the kernel's bss (GRUB did this for ELF; we do it for flat)
-    mov edi, KERNEL_ADDR + KERNEL_SECTORS * 512
-    mov ecx, (BSS_END_OFF - KERNEL_SECTORS * 512) / 4
+    movzx eax, word [chosen_sectors]
+    shl eax, 9                       ; sectors -> bytes
+    mov edi, KERNEL_ADDR
+    add edi, eax
+    mov ecx, [chosen_bss]
+    shr eax, 2
+    sub ecx, eax                     ; (bss_end - loaded) -> dwords
     xor eax, eax
     rep stosd
 
@@ -393,6 +608,19 @@ pm_start:
     stosd
 .no_fb_tag:
 
+    ; tag 0x1337 (ours): which kernel slot booted + candidate flag, so the
+    ; kernel can confirm itself after a self-update
+    mov eax, 0x1337
+    stosd
+    mov eax, 16
+    stosd
+    mov eax, 0
+    mov al, [chosen_slot]
+    stosd
+    mov eax, 0
+    mov al, [chosen_cand]
+    stosd
+
     ; end tag
     xor eax, eax
     stosd
@@ -407,7 +635,9 @@ pm_start:
     ; hand over: the multiboot2 magic + info pointer, exactly like GRUB
     mov eax, MB2_BOOT_MAGIC
     mov ebx, MB2_ADDR
-    jmp KERNEL_ADDR + ENTRY_OFF
+    mov edx, KERNEL_ADDR
+    add edx, [chosen_entry]
+    jmp edx
 
 .hang:
     cli

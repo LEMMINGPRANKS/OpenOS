@@ -10,6 +10,8 @@
 #include "desktop.h"
 #include "ata.h"
 #include "store.h"
+#include "part.h"
+#include "kupdate.h"
 #include "version.h"
 
 #define MB2_BOOT_MAGIC 0x36D76289
@@ -22,6 +24,7 @@ void kmain(unsigned long magic, unsigned long addr)
         initrd_init(addr);              // IR2: find the initramfs
         mm_init(addr);                  // physical memory from firmware map
         gfx_init(addr);                 // linear framebuffer, if GRUB gave us one
+        kupdate_scan_mb2(addr);         // which A/B slot booted (OpenBIOS tag)
     }
 
     term_init();
@@ -31,6 +34,7 @@ void kmain(unsigned long magic, unsigned long addr)
     __asm__ volatile ("sti");           // the kernel gets a heartbeat
     mouse_init();                       // and a mouse (IRQ12)
     ata_init();                         // DR1: the main drive, if there is one
+    part_scan();                        // find our partition on each disk
 
     term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
     term_puts("\n   OpenOS " OS_VERSION "\n");
@@ -54,6 +58,8 @@ void kmain(unsigned long magic, unsigned long addr)
     }
     if (store_migrated())
         term_puts("   DR1: filesystem moved onto the store drive\n");
+
+    kupdate_confirm();                 // candidate booted + is alive: promote it
 
     desktop_run();                     // boots into desktop (or plain shell)
 }

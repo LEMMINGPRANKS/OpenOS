@@ -183,6 +183,7 @@ int ata_init(void)
 int ata_present(void)   { return present; }
 int ata_slave_present(void) { return slave_present; }
 void ata_use_slave(int on)  { use_slave = on ? 1 : 0; }
+int  ata_slave_selected(void) { return use_slave; }
 const char *ata_model(void) { return model; }
 uint64_t ata_sectors(void)  { return sectors28; }
 

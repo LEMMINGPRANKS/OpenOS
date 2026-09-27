@@ -85,7 +85,7 @@ static void fm_render(struct fm_state *st)
         term_puts(f->name);
         term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
         term_puts("  [");
-        term_puts(f->source == FS_RAMFS ? "ramfs" : "IR2");
+        term_puts(f->source == FS_RAMFS ? "DR1" : "IR2");
         term_puts("] ");
         print_u32(f->size);
         term_putc('\n');

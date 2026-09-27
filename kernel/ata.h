@@ -11,6 +11,7 @@ int         ata_init(void);                       // IDENTIFY; 1 = present
 int         ata_present(void);
 int         ata_slave_present(void);              // store drive attached?
 void        ata_use_slave(int on);                // route read/write to it
+int         ata_slave_selected(void);             // which one is selected now
 
 const char *ata_model(void);                      // 40-char IDENTIFY string
 uint64_t    ata_sectors(void);                    // LBA28 sector count
