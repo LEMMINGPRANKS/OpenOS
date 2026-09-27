@@ -17,10 +17,13 @@ void term_use(struct console *con);        // make active + full redraw
 struct console *term_active(void);
 void term_render(struct console *con);     // redraw just this console
 void term_move(struct console *con, uint32_t px, uint32_t py); // drag support
+void term_view(const struct console *con, uint32_t *x, uint32_t *y,
+               uint32_t *w, uint32_t *h);                       // pixel viewport
 int term_goto(struct console *con, int col, int row);  // move the write cursor
 uint16_t term_cols(struct console *con);
 void term_pos(struct console *con, int *col, int *row);
 int term_locate(struct console *con, int mx, int my, int *col, int *row);
+void term_protect(struct console *con, int rows);  // pixel-toolbar rows
 
 void term_putc(char c);
 void term_puts(const char *s);

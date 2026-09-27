@@ -210,3 +210,183 @@ void gfx_copy(uint32_t dx, uint32_t dy, uint32_t sx, uint32_t sy,
         }
     }
 }
+
+// --- 2015-OS chrome: rounded rects, alpha blending, soft shadows ---
+
+static uint32_t raw_to_rgb(uint32_t raw)
+{
+    if (fb_bpp == 32) {
+        uint32_t r = (raw >> r_pos) & 0xFF;
+        uint32_t g = (raw >> g_pos) & 0xFF;
+        uint32_t b = (raw >> b_pos) & 0xFF;
+        return (r << 16) | (g << 8) | b;
+    }
+    return ((raw >> 16) & 0xFF) << 16 | ((raw >> 8) & 0xFF) << 8 | (raw & 0xFF);
+}
+
+uint32_t gfx_read_rgb(uint32_t x, uint32_t y)
+{
+    return raw_to_rgb(gfx_read_pixel(x, y));
+}
+
+static uint32_t blend(uint32_t dst, uint32_t src, uint32_t a)
+{
+    uint32_t dr = (dst >> 16) & 0xFF, dg = (dst >> 8) & 0xFF, db = dst & 0xFF;
+    uint32_t sr = (src >> 16) & 0xFF, sg = (src >> 8) & 0xFF, sb = src & 0xFF;
+    uint32_t r = (sr * a + dr * (255 - a)) / 255;
+    uint32_t g = (sg * a + dg * (255 - a)) / 255;
+    uint32_t b = (sb * a + db * (255 - a)) / 255;
+    return (r << 16) | (g << 8) | b;
+}
+
+void gfx_blend_pixel(uint32_t x, uint32_t y, uint32_t rgb, uint32_t alpha)
+{
+    if (!ok || alpha > 255)
+        return;
+    gfx_write_pixel(x, y, gfx_rgb(blend(gfx_read_rgb(x, y), rgb, alpha)));
+}
+
+void gfx_fill_rect_blend(uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+                         uint32_t rgb, uint32_t alpha)
+{
+    if (!ok)
+        return;
+    if (x + w > fb_w) w = fb_w - x;
+    if (y + h > fb_h) h = fb_h - y;
+    for (uint32_t r = y; r < y + h; r++)
+        for (uint32_t c = x; c < x + w; c++)
+            gfx_blend_pixel(c, r, rgb, alpha);
+}
+
+// per-pixel rounded-rect test: clamp the point to the inner rectangle,
+// then it's inside iff the distance to the clamped point fits the radius
+static int rrect_inside(uint32_t c, uint32_t r, uint32_t w, uint32_t h,
+                        uint32_t rad)
+{
+    uint32_t cx = c < rad ? rad : (c >= w - rad ? w - rad - 1 : c);
+    uint32_t cy = r < rad ? rad : (r >= h - rad ? h - rad - 1 : r);
+    uint32_t dx = c - cx, dy = r - cy;
+    return dx * dx + dy * dy <= rad * rad;
+}
+
+static uint32_t clamp_rad(uint32_t w, uint32_t h, uint32_t rad)
+{
+    if (rad > (w - 1) / 2) rad = (w - 1) / 2;
+    if (rad > (h - 1) / 2) rad = (h - 1) / 2;
+    return rad;
+}
+
+void gfx_fill_rect_r(uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+                     uint32_t rad, uint32_t rgb)
+{
+    if (!ok)
+        return;
+    rad = clamp_rad(w, h, rad);
+    uint32_t val = gfx_rgb(rgb);
+    if (x + w > fb_w) w = fb_w - x;
+    if (y + h > fb_h) h = fb_h - y;
+    for (uint32_t r = 0; r < h; r++)
+        for (uint32_t c = 0; c < w; c++)
+            if (rrect_inside(c, r, w, h, rad))
+                gfx_write_pixel(x + c, y + r, val);
+}
+
+void gfx_fill_rect_r_blend(uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+                           uint32_t rad, uint32_t rgb, uint32_t alpha)
+{
+    if (!ok)
+        return;
+    rad = clamp_rad(w, h, rad);
+    if (x + w > fb_w) w = fb_w - x;
+    if (y + h > fb_h) h = fb_h - y;
+    for (uint32_t r = 0; r < h; r++)
+        for (uint32_t c = 0; c < w; c++)
+            if (rrect_inside(c, r, w, h, rad))
+                gfx_blend_pixel(x + c, y + r, rgb, alpha);
+}
+
+void gfx_rect_r(uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+                uint32_t rad, uint32_t rgb)
+{
+    if (!ok)
+        return;
+    rad = clamp_rad(w, h, rad);
+    // border = inside the rect but not inside the 1px-shrunk rect
+    for (uint32_t r = 0; r < h; r++)
+        for (uint32_t c = 0; c < w; c++) {
+            int edge = c == 0 || r == 0 || c + 1 >= w || r + 1 >= h;
+            if (rrect_inside(c, r, w, h, rad) && (edge ||
+                !rrect_inside(c - 1, r - 1, w - 2, h - 2, rad ? rad - 1 : 0)))
+                gfx_pixel(x + c, y + r, rgb);
+        }
+}
+
+// soft drop shadow: stacked translucent black rounded rects, each ring
+// wider and fainter, offset down-right -- reads as a diffuse blur
+void gfx_shadow_r(uint32_t x, uint32_t y, uint32_t w, uint32_t h, uint32_t rad)
+{
+    static const uint32_t grow[4] = {1, 3, 5, 8};
+    static const uint32_t alpha[4] = {70, 48, 30, 14};
+    for (int i = 3; i >= 0; i--) {
+        gfx_fill_rect_r_blend(x - grow[i] + 2, y - grow[i] + 4,
+                              w + 2 * grow[i], h + 2 * grow[i],
+                              rad + grow[i], 0x000000, alpha[i]);
+    }
+}
+
+// rounded on the top corners only (window title bars)
+void gfx_fill_rect_top_r(uint32_t x, uint32_t y, uint32_t w, uint32_t h,
+                         uint32_t rad, uint32_t rgb)
+{
+    if (!ok)
+        return;
+    rad = clamp_rad(w, h, rad);
+    uint32_t val = gfx_rgb(rgb);
+    if (x + w > fb_w) w = fb_w - x;
+    if (y + h > fb_h) h = fb_h - y;
+    for (uint32_t r = 0; r < h; r++)
+        for (uint32_t c = 0; c < w; c++) {
+            uint32_t cx = c < rad ? rad : (c >= w - rad ? w - rad - 1 : c);
+            uint32_t cy = r < rad ? rad : r;      // no bottom rounding
+            uint32_t dx = c - cx, dy = r - cy;
+            if (dx * dx + dy * dy <= rad * rad)
+                gfx_write_pixel(x + c, y + r, val);
+        }
+}
+
+void gfx_fill_circle(uint32_t cx, uint32_t cy, uint32_t rad, uint32_t rgb)
+{
+    if (!ok)
+        return;
+    uint32_t val = gfx_rgb(rgb);
+    for (int32_t dy = -(int32_t)rad; dy <= (int32_t)rad; dy++)
+        for (int32_t dx = -(int32_t)rad; dx <= (int32_t)rad; dx++)
+            if (dx * dx + dy * dy <= (int32_t)(rad * rad))
+                gfx_write_pixel((uint32_t)((int32_t)cx + dx),
+                                (uint32_t)((int32_t)cy + dy), val);
+}
+
+// big text for logos/splash art: each font pixel becomes a scale x scale
+// block, and rows shear right toward the top for italics
+void gfx_text_scaled(uint32_t x, uint32_t y, const char *s, uint32_t rgb,
+                     int scale, int shear)
+{
+    for (int i = 0; s[i]; i++) {
+        int gi = (uint8_t)s[i] - FONT_FIRST;
+        if (gi < 0 || gi >= FONT_COUNT)
+            continue;
+        const unsigned char *g = font8x16[gi];
+        for (int r = 0; r < FONT_H; r++) {
+            if (!g[r])
+                continue;
+            int off = shear * (FONT_H - 1 - r) / (FONT_H - 1);
+            for (int b = 0; b < 8; b++) {
+                if (!(g[r] & (0x80 >> b)))
+                    continue;
+                gfx_fill_rect((uint32_t)(x + i * 8 * scale + b * scale + off),
+                              (uint32_t)(y + r * scale),
+                              (uint32_t)scale, (uint32_t)scale, rgb);
+            }
+        }
+    }
+}

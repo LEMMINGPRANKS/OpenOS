@@ -28,6 +28,7 @@
 #include "kupdate.h"
 #include "settings.h"
 #include "nic.h"
+#include "appbar.h"
 
 #define LINE_MAX 128
 #define SHELL_STATES 5          // [0] = boot/VGA console, rest = windows
@@ -94,12 +95,12 @@ static struct shell_state *state_for(struct console *con)
 
 static void prompt(void)
 {
-    term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
-    term_puts(" ");
+    term_setcolor(0x01);                 // link-blue name on paper
     if (cwd[1])
         term_puts(path_basename(cwd));   // "docs>" inside /docs
     else
         term_puts("openos");
+    term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
     term_puts("> ");
 }
 
@@ -646,6 +647,12 @@ void shell_execute(char *cmdline)
             term_putc('\n');
         }
     }
+    else if (!strcmp(cmdline, "files") && gfx_available())
+        wm_open(APP_FILES, 110, 80, 560, 400);
+    else if (!strcmp(cmdline, "music") && gfx_available())
+        wm_open(APP_MUSIC, 110, 80, 560, 460);
+    else if (!strcmp(cmdline, "download") && gfx_available())
+        wm_open(APP_DOWNLOAD, 110, 80, 560, 400);
     else if (!strcmp(cmdline, "dev"))    dev_list();
     else if (!strcmp(cmdline, "disk"))   cmd_disk(arg);
     else if (!strcmp(cmdline, "save"))   cmd_save();
@@ -676,8 +683,11 @@ void shell_execute(char *cmdline)
 void shell_app_open(struct console *con)
 {
     state_for(con);
-    if (con)
+    if (con) {
         term_use(con);
+        term_protect(con, APPBAR_ROWS);
+        appbar_paint(con, "Shell", OS_VERSION, 0x546E7A);
+    }
     term_puts("OpenOS shell. type 'help' for commands.\n\n");
     prompt();
 }

@@ -11,5 +11,6 @@ void settings_set(const char *key, const char *value);    // saves to DR1
 
 void settings_app_open(struct console *con);
 void settings_app_input(struct console *con, char c);
+void settings_app_repaint(struct console *con);  // after full cell renders
 
 #endif

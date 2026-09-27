@@ -10,6 +10,9 @@
 #include "version.h"
 #include "apps.h"
 #include "marks.h"
+#include "term.h"
+#include "gfx.h"
+#include "font.h"
 
 // The Internet app. Five tabs on row 0, a context line on row 1 (the
 // Browser's address bar or the Comments/Ideas post box), pages rendered
@@ -91,12 +94,28 @@ static int looks_like_html(const uint8_t *body, uint32_t n)
     return 0;
 }
 
-// --- chrome: tab bar (row 0) + context line (row 1) ------------------------
+// --- chrome: tab strip (row 0) + omnibox (row 1) + home page ----------------
 
-#define COL_ACTIVE   0x1E      // yellow on blue
-#define COL_IDLE     0x1B      // light cyan
-#define COL_INPUT    0x1A      // light green
+#define COL_ACTIVE   0x70      // ink on light grey (the open tab)
+#define COL_IDLE     0x07      // grey ink on white
+#define COL_HINT     0x07      // grey placeholder text
 #define COL_TEXT     0x1F
+
+#define CHROME_RED   0xE53935  // the INTERNET logo
+#define CHROME_LINE  0xDADCE0  // search bar border
+#define CHROME_ICON  0x9AA0A6  // the magnifier
+
+#define HOME_LOGO_SCALE 6      // 8px font x6 -> 48px letters
+#define HOME_ROW        12     // the console row inside the home search bar
+#define HOME_TILES      6
+#define TILE_W          120
+#define TILE_H          96
+#define TILE_GAP        28
+
+static int on_home;
+static char tile_url[HOME_TILES][96];
+static uint32_t tile_x[HOME_TILES], tile_y[HOME_TILES];
+static int tile_n;
 
 static void tabs_draw(struct console *con)
 {
@@ -116,15 +135,68 @@ static void tabs_draw(struct console *con)
         term_putc(' ');
 }
 
+// the omnibox: a real drawn search bar wrapping row 1
+static void omnibox_paint(struct console *con)
+{
+    uint32_t vx, vy, vw, vh;
+    term_view(con, &vx, &vy, &vw, &vh);
+    (void)vh;
+    uint32_t py = vy + FONT_H - 3;
+    uint32_t ph = (uint32_t)FONT_H + 6;
+    gfx_rect_r(vx + 4, py, vw - 8, ph, ph / 2, CHROME_LINE);
+    gfx_fill_circle(vx + 22, py + ph / 2 - 1, 4, CHROME_ICON);
+    gfx_fill_rect(vx + 26, py + ph / 2 + 3, 3, 3, CHROME_ICON);
+}
+
+// geometry of the home page's big search bar
+static void home_bar(struct console *con, uint32_t *px, uint32_t *py,
+                     uint32_t *pw)
+{
+    uint32_t vx, vy, vw, vh;
+    term_view(con, &vx, &vy, &vw, &vh);
+    (void)vh;
+    *pw = vw - 24 > 540 ? 540 : vw - 24;
+    *px = vx + (vw - *pw) / 2;
+    *py = vy + HOME_ROW * FONT_H - 12;
+}
+
+// what the home page's search bar shows: the query, or the grey hint
+static void home_search_draw(struct console *con)
+{
+    uint32_t vx, vy, vw, vh;
+    term_view(con, &vx, &vy, &vw, &vh);
+    (void)vw; (void)vh;
+    uint32_t bx, by, bw;
+    home_bar(con, &bx, &by, &bw);
+    // row 1 stays blank on the home page -- the bar lives mid-page
+    term_goto(con, 0, 1);
+    term_setcolor(COL_TEXT);
+    for (int i = 0; i + 1 < (int)term_cols(con); i++)
+        term_putc(' ');
+    term_goto(con, (int)((bx + 40 - vx) / FONT_W), HOME_ROW);
+    if (burl_n) {
+        term_setcolor(COL_TEXT);
+        term_puts(burl);
+    } else {
+        term_setcolor(COL_HINT);
+        term_puts("search the internet or type an address");
+    }
+    int col = 0;
+    term_pos(con, &col, 0);
+    for (; col + 1 < (int)term_cols(con); col++)
+        term_putc(' ');
+}
+
 static void context_draw(struct console *con)
 {
-    term_goto(con, 0, 1);
+    term_goto(con, 4, 1);
     if (tab == TAB_BROWSER) {
-        term_setcolor(COL_INPUT);
-        term_puts("open: ");
-        term_puts(burl_n ? burl : "(type an address, Enter loads)");
+        const char *show = burl_n ? burl :
+                           (last_page[0] ? last_page : 0);
+        term_setcolor(show ? COL_TEXT : COL_HINT);
+        term_puts(show ? show : "type an address, or words to search");
     } else if (tab == TAB_COMMENTS || tab == TAB_IDEAS) {
-        term_setcolor(COL_INPUT);
+        term_setcolor(cmsg_n ? COL_TEXT : COL_HINT);
         term_puts(tab == TAB_COMMENTS ? "say: " : "idea: ");
         term_puts(cmsg_n ? cmsg : "(type, Enter posts it)");
     } else if (tab == TAB_NEWS) {
@@ -146,8 +218,15 @@ static void context_draw(struct console *con)
 
 static void chrome_draw(struct console *con)
 {
+    if (on_home && tab == TAB_BROWSER) {
+        // home's pixels are already down; tabs_draw's full re-render
+        // (term_use) would wipe them, so typing only refreshes the bar
+        home_search_draw(con);
+        return;
+    }
     tabs_draw(con);
     context_draw(con);
+    omnibox_paint(con);                 // pixels last: cells paint paper
 }
 
 static int tab_at(int col)
@@ -304,12 +383,69 @@ static void search_for(struct console *con, const char *query)
     }
 }
 
-// the local home page: bookmarks + recently visited, all clickable
-static void home_show(struct console *con)
+// the local home page: INTERNET in giant red italics, a Chrome-style
+// search bar under it, bookmark tiles under that (all clickable)
+static void home_paint(struct console *con)
 {
-    static char page[4096];
-    int n = marks_home_page(page, (int)sizeof page);
-    page_draw(con, page, (uint32_t)n);
+    on_home = 1;
+    term_use(con);
+    term_clear();                       // every cell paper-white first
+    tabs_draw(con);                     // full cell render happens here;
+    uint32_t vx, vy, vw, vh;            // pixels below must come after it
+    term_view(con, &vx, &vy, &vw, &vh);
+
+    // the page area is a clean white sheet
+    gfx_fill_rect(vx, vy + 2 * FONT_H, vw, vh - 2 * FONT_H, 0xFFFFFF);
+
+    // the logo: 8 letters, 48px tall, leaning right
+    uint32_t lw = 8 * 8 * HOME_LOGO_SCALE + 14;
+    gfx_text_scaled(vx + (vw - lw) / 2, vy + 2 * FONT_H + 36,
+                    "INTERNET", CHROME_RED, HOME_LOGO_SCALE, 14);
+
+    // the search bar: a rounded pill wrapping console row HOME_ROW
+    uint32_t bx, by, bw;
+    home_bar(con, &bx, &by, &bw);
+    gfx_rect_r(bx, by, bw, 40, 20, CHROME_LINE);
+    gfx_fill_circle(bx + 22, by + 19, 5, CHROME_ICON);
+    gfx_fill_rect(bx + 27, by + 24, 4, 4, CHROME_ICON);
+
+    // bookmark tiles under the bar
+    tile_n = marks_bookmarks(tile_url, HOME_TILES);
+    while (tile_n > 1 &&
+           (uint32_t)tile_n * TILE_W + (uint32_t)(tile_n - 1) * TILE_GAP
+               > vw - 16)
+        tile_n--;                       // shrink to fit narrow windows
+    uint32_t ty = by + 40 + 44;
+    for (int i = 0; i < tile_n; i++) {
+        uint32_t row_w = (uint32_t)tile_n * TILE_W +
+                         (uint32_t)(tile_n - 1) * TILE_GAP;
+        uint32_t tx = vx + (vw - row_w) / 2 +
+                      (uint32_t)i * (TILE_W + TILE_GAP);
+        tile_x[i] = tx;
+        tile_y[i] = ty;
+        gfx_fill_rect_r(tx, ty, TILE_W, TILE_H, 12, 0xFFFFFF);
+        gfx_rect_r(tx, ty, TILE_W, TILE_H, 12, 0xDEDEE4);
+        static const uint32_t dots[6] = {
+            0x1E5AA8, 0xE53935, 0x2E7D32, 0xB8860B, 0x8E24AA, 0x00838F
+        };
+        gfx_fill_circle(tx + TILE_W / 2, ty + 34, 14, dots[i % 6]);
+        char nm[16];
+        int nn = 0;
+        const char *u = tile_url[i];
+        int s = starts_with(u, "http://") ? 7 : 0;
+        for (; u[s] && u[s] != '/' && nn < 14; s++)
+            nm[nn++] = u[s];
+        nm[nn] = 0;
+        if (nn)
+            gfx_text(tx + (TILE_W - (uint32_t)nn * FONT_W) / 2,
+                     ty + TILE_H - 24, nm, 0x3A3A42, 0xFFFFFF);
+    }
+    if (!tile_n) {
+        term_goto(con, 4, HOME_ROW + 4);
+        term_setcolor(COL_HINT);
+        term_puts("(no bookmarks yet -- load a page, then type bm + Enter)");
+    }
+    home_search_draw(con);              // bar text last, over the pixels
 }
 
 static void browser_load_keep(struct console *con);
@@ -326,9 +462,14 @@ static void browser_load_keep(struct console *con)
 {
     char u[LINE_MAX_CHARS];
     int un = burl_n;
+    on_home = 0;
     for (int i = 0; i < burl_n; i++)
         u[i] = burl[i];
     u[un] = 0;
+    if (!un) {                           // empty omnibox: back to home
+        home_paint(con);
+        return;
+    }
     if (un > 7 && starts_with(u, "http://")) {
         for (int i = 0; i <= un - 7; i++)
             u[i] = u[i + 7];
@@ -365,16 +506,16 @@ static void browser_load_keep(struct console *con)
         return;
     }
 
-    // home = our own start page (bookmarks + history)
+    // home = our own start page (logo + search + bookmarks)
     if (starts_with(u, "home") && !u[4]) {
-        home_show(con);
+        home_paint(con);
         return;
     }
     // bm = bookmark the page we are on, then show Home so it's visible
     if (starts_with(u, "bm") && !u[2]) {
         if (last_page[0])
             marks_bookmark(last_page);
-        home_show(con);
+        home_paint(con);
         return;
     }
 
@@ -546,8 +687,7 @@ void internet_app_input(struct console *con, char c)
     } else {
         return;
     }
-    tabs_draw(con);
-    context_draw(con);
+    chrome_draw(con);
 }
 
 static void switch_tab(struct console *con, int t)
@@ -576,8 +716,25 @@ static void switch_tab(struct console *con, int t)
     }
 }
 
+// a full console re-render just wiped our pixels: put the page back
+void internet_app_repaint(struct console *con)
+{
+    if (on_home && tab == TAB_BROWSER)
+        home_paint(con);
+}
+
 void internet_app_click(struct console *con, int mx, int my)
 {
+    // home page first: the bookmark tiles are drawn in pixel space
+    if (on_home && tab == TAB_BROWSER) {
+        for (int i = 0; i < tile_n; i++)
+            if (mx >= (int)tile_x[i] && mx < (int)(tile_x[i] + TILE_W) &&
+                my >= (int)tile_y[i] && my < (int)(tile_y[i] + TILE_H)) {
+                set_line(burl, &burl_n, tile_url[i]);
+                browser_load(con);
+                return;
+            }
+    }
     int col, row;
     if (!term_locate(con, mx, my, &col, &row))
         return;

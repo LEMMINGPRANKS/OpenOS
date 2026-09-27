@@ -201,6 +201,65 @@ start:
     mov si, msg_pm
     call puts
 
+    ; --- Bochs VBE dispi extension (QEMU/VBox/Bochs): set 1400x900x32 ---
+    ; 1400x900 is not a standard VESA mode, so on virtual machines we program
+    ; the dispi registers directly; real hardware falls through to the scan
+    mov dx, 0x01CE
+    mov ax, 0x0000                   ; index 0 = ID
+    out dx, ax
+    inc dx                           ; 0x01CF = data port
+    in  ax, dx
+    and ax, 0xFFF0
+    cmp ax, 0xB0C0
+    jne .no_dispi                    ; no dispi -> classic VBE scan below
+    mov dx, 0x01CE
+    mov ax, 0x0004                   ; ENABLE
+    out dx, ax
+    inc dx
+    mov ax, 0x0000                   ; disable while we change geometry
+    out dx, ax
+    mov dx, 0x01CE
+    mov ax, 0x0001                   ; XRES
+    out dx, ax
+    inc dx
+    mov ax, 1400
+    out dx, ax
+    mov dx, 0x01CE
+    mov ax, 0x0002                   ; YRES
+    out dx, ax
+    inc dx
+    mov ax, 900
+    out dx, ax
+    mov dx, 0x01CE
+    mov ax, 0x0003                   ; BPP
+    out dx, ax
+    inc dx
+    mov ax, 32
+    out dx, ax
+    mov dx, 0x01CE
+    mov ax, 0x0004                   ; ENABLE
+    out dx, ax
+    inc dx
+    mov ax, 0x0041                   ; enabled | linear framebuffer
+    out dx, ax
+    ; read XRES back: if the card refused the geometry, use the scan instead
+    mov dx, 0x01CE
+    mov ax, 0x0001
+    out dx, ax
+    inc dx
+    in  ax, dx
+    cmp ax, 1400
+    jne .no_dispi
+    mov word [MODE_INFO + 0x10], 5600     ; pitch = 1400 * 4
+    mov word [MODE_INFO + 0x12], 1400
+    mov word [MODE_INFO + 0x14], 900
+    mov byte [MODE_INFO + 0x19], 32
+    mov byte [MODE_INFO + 0x1B], 6        ; memory model: direct colour
+    mov dword [MODE_INFO + 0x28], 0xFD000000  ; QEMU std-VGA LFB (PCI BAR)
+    mov byte [vbe_ok], 1
+    jmp .vbe_done
+.no_dispi:
+
     ; --- VBE: find + set 800x600, 24 or 32 bpp, linear framebuffer ---
     mov ax, 0
     mov es, ax

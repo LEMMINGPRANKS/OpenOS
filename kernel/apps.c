@@ -13,6 +13,10 @@
 #include "settings.h"
 #include "store.h"
 #include "kupdate.h"
+#include "music.h"
+#include "dlapp.h"
+#include "updapp.h"
+#include "appbar.h"
 
 // Apps are the things that can live inside a window. Each app gets
 // keyboard chars through app_input with the window's console.
@@ -49,11 +53,9 @@ static void viewer_open(struct console *con)
 {
     term_use(con);
     const struct ext_type *t = ext_lookup(app_arg);
+    term_protect(con, APPBAR_ROWS);
+    appbar_paint(con, app_arg, t->desc, 0x78909C);
     term_setcolor(t->vga_color);
-    term_puts("--- ");
-    term_puts(app_arg);
-    term_puts(" ---\n");
-    term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
     term_puts("type: ");
     term_puts(t->desc);
     term_puts("\n\n");
@@ -82,9 +84,9 @@ static void viewer_open(struct console *con)
 static void runner_open(struct console *con)
 {
     term_use(con);
-    term_puts("--- run ");
-    term_puts(app_arg);
-    term_puts(" ---\n\n");
+    term_protect(con, APPBAR_ROWS);
+    appbar_paint(con, app_arg, "OpenJS", 0x78909C);
+    term_putc('\n');
     uint32_t size = 0;
     const char *data = files_read(app_arg, &size);
     if (!data) {
@@ -148,8 +150,9 @@ static void notepad_open(struct console *con)
 {
     note_for(con);
     term_use(con);
-    term_puts("NOTEPAD -- typing is saved to note.txt\n");
-    term_puts("(the shell can read it: cat note.txt)\n\n");
+    term_protect(con, APPBAR_ROWS);
+    appbar_paint(con, "note.txt", "auto-saved to DR1", 0xB8860B);
+    term_puts("type your note -- it saves itself.\n\n");
     ramfs_write("/note.txt", "", 0);
 }
 
@@ -200,6 +203,12 @@ void app_open(enum app_id app, struct console *con)
         paint_open(con);
     else if (app == APP_SETTINGS)
         settings_app_open(con);
+    else if (app == APP_MUSIC)
+        music_app_open(con);
+    else if (app == APP_DOWNLOAD)
+        download_app_open(con);
+    else if (app == APP_UPDATE)
+        update_app_open(con);
 }
 
 void app_input(enum app_id app, struct console *con, char c)
@@ -216,6 +225,12 @@ void app_input(enum app_id app, struct console *con, char c)
         paint_input(con, c);
     else if (app == APP_SETTINGS)
         settings_app_input(con, c);
+    else if (app == APP_MUSIC)
+        music_app_input(con, c);
+    else if (app == APP_DOWNLOAD)
+        download_app_input(con, c);
+    else if (app == APP_UPDATE)
+        update_app_input(con, c);
     (void)con; (void)c;                // other apps take no keyboard input
 }
 
@@ -225,6 +240,10 @@ void app_click(enum app_id app, struct console *con, int mx, int my, int dbl)
         filemgr_click(con, mx, my, dbl);
     else if (app == APP_INTERNET)
         internet_app_click(con, mx, my);
+    else if (app == APP_DOWNLOAD)
+        download_app_click(con, mx, my);
+    else if (app == APP_MUSIC)
+        music_app_click(con, mx, my);
     (void)mx; (void)my; (void)dbl;
 }
 
@@ -247,6 +266,24 @@ void app_pointer(enum app_id app, struct console *con,
         paint_pointer(con, mx, my, left);
 }
 
+// after a full console re-render (drag, focus change): apps that paint
+// pixels over their console get a chance to put them back
+void app_after_paint(enum app_id app, struct console *con)
+{
+    if (app == APP_INTERNET)
+        internet_app_repaint(con);
+    else if (app == APP_FILES)
+        filemgr_app_repaint(con);
+    else if (app == APP_MUSIC)
+        music_app_repaint(con);
+    else if (app == APP_DOWNLOAD)
+        download_app_repaint(con);
+    else if (app == APP_UPDATE)
+        update_app_repaint(con);
+    else if (app == APP_SETTINGS)
+        settings_app_repaint(con);
+}
+
 const char *app_name(enum app_id app)
 {
     if (app == APP_SHELL)     return "Shell";
@@ -257,5 +294,24 @@ const char *app_name(enum app_id app)
     if (app == APP_INTERNET)  return "Internet";
     if (app == APP_PAINT)     return "Paint";
     if (app == APP_SETTINGS)  return "Settings";
+    if (app == APP_MUSIC)     return "Music";
+    if (app == APP_DOWNLOAD)  return "Download";
+    if (app == APP_UPDATE)    return "Update";
     return "?";
+}
+
+uint32_t app_accent(enum app_id app)
+{
+    if (app == APP_SHELL)     return 0x546E7A;
+    if (app == APP_NOTEPAD)   return 0xB8860B;
+    if (app == APP_FILES)     return 0x1E5AA8;
+    if (app == APP_VIEWER)    return 0x78909C;
+    if (app == APP_RUNNER)    return 0x78909C;
+    if (app == APP_INTERNET)  return 0xE53935;
+    if (app == APP_PAINT)     return 0x8E24AA;
+    if (app == APP_SETTINGS)  return 0x616161;
+    if (app == APP_MUSIC)     return 0xD81B60;
+    if (app == APP_DOWNLOAD)  return 0x00897B;
+    if (app == APP_UPDATE)    return 0x43A047;
+    return 0x616161;
 }

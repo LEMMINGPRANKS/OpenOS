@@ -7,6 +7,7 @@
 #include "net.h"
 #include "http.h"
 #include "version.h"
+#include "appbar.h"
 
 // --- the store ---------------------------------------------------------------
 // key=value lines in /settings.txt (ramfs, flushed to DR1, restored at boot)
@@ -104,9 +105,16 @@ void settings_set(const char *key, const char *value)
 
 // --- the app -----------------------------------------------------------------
 
-#define ROW_NIC    0
-#define ROW_SERVER 1
-#define SRV_MAX    24
+#define SET_ACCENT  0x616161
+#define ROW_NIC     0            // st.row index, not a screen row
+#define ROW_SERVER  1
+#define SRV_MAX     24
+
+#define SCR_NIC     (APPBAR_ROWS + 2)
+#define SCR_ACTIVE  (APPBAR_ROWS + 3)
+#define SCR_SERVER  (APPBAR_ROWS + 5)
+#define SCR_HINT    (APPBAR_ROWS + 8)
+#define SCR_MSG     (APPBAR_ROWS + 9)
 
 static struct {
     int  row;
@@ -170,6 +178,13 @@ static int parse_ip_port(const char *s, uint32_t *ip, uint16_t *port)
     return 0;
 }
 
+static void setmsg(const char *m)
+{
+    int i = 0;
+    for (; m[i] && i < (int)sizeof st.msg - 1; i++) st.msg[i] = m[i];
+    st.msg[i] = 0;
+}
+
 static void apply_nic(int dir)
 {
     st.nic_sel = (st.nic_sel + dir + NIC_CHOICES) % NIC_CHOICES;
@@ -179,27 +194,22 @@ static void apply_nic(int dir)
     net_reset();
     nic_rebind(fam);
     // instant feedback: bring the new card up right now
-    term_puts("\nrestarting network on ");
-    term_puts(fam);
-    term_puts("...\n");
     if (net_init() != 0) {
-        term_puts("no card answered yet -- will retry on next use\n");
+        setmsg("no card answered yet -- will retry on next use");
     } else {
+        char msg[48];
+        int n = 0;
+        const char *pre = "up: ";
+        for (int i = 0; pre[i] && n < 46; i++) msg[n++] = pre[i];
+        for (int i = 0; fam[i] && n < 46; i++) msg[n++] = fam[i];
         char ipstr[16];
         net_ip_str(net_local_ip(), ipstr);
-        term_puts("active card: ");
-        term_puts(nic_name());
-        term_puts(", ip ");
-        term_puts(ipstr);
-        term_putc('\n');
+        const char *mid = "  ip ";
+        for (int i = 0; mid[i] && n < 46; i++) msg[n++] = mid[i];
+        for (int i = 0; ipstr[i] && n < 46; i++) msg[n++] = ipstr[i];
+        msg[n] = 0;
+        setmsg(msg);
     }
-}
-
-static void setmsg(const char *m)
-{
-    int i = 0;
-    for (; m[i] && i < (int)sizeof st.msg - 1; i++) st.msg[i] = m[i];
-    st.msg[i] = 0;
 }
 
 static void apply_server(void)
@@ -219,38 +229,44 @@ static void apply_server(void)
 static void settings_draw(struct console *con)
 {
     term_use(con);
+    term_protect(con, APPBAR_ROWS);
     term_clear();
-    term_puts("SETTINGS -- OpenOS ");
-    term_puts(OS_VERSION);
-    term_puts("\n\n");
+    appbar_paint(con, "Settings", OS_VERSION, SET_ACCENT);
 
-    term_puts(st.row == ROW_NIC ? "> " : "  ");
-    term_puts("Network card: ");
-    term_setcolor(st.row == ROW_NIC ? 0x1E : 0x1F);
-    term_puts("< ");
+    term_goto(con, 0, SCR_NIC);
+    term_setcolor(st.row == ROW_NIC ? (uint8_t)(0x70 | 0x0F) : 0x07);
+    term_puts("  network card   < ");
     term_puts(nic_choice(st.nic_sel));
     term_puts(" >");
-    term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
-    term_puts("\n  active card: ");
-    term_puts(nic_name());
-    term_puts("\n\n");
 
-    term_puts(st.row == ROW_SERVER ? "> " : "  ");
-    term_puts("Package server (ip:port):\n  ");
-    term_setcolor(st.row == ROW_SERVER ? 0x1A : 0x1F);
-    term_puts("[");
+    term_goto(con, 0, SCR_ACTIVE);
+    term_setcolor(0x08);
+    term_puts("  active: ");
+    term_puts(nic_name());
+
+    term_goto(con, 0, SCR_SERVER);
+    term_setcolor(st.row == ROW_SERVER ? (uint8_t)(0x70 | 0x0F) : 0x07);
+    term_puts("  package server [");
     term_puts(st.srv);
     if (st.row == ROW_SERVER)
         term_putc('_');
     term_puts("]");
-    term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
-    term_puts("  (Enter applies)\n\n");
 
-    term_puts("up/down pick a row, left/right or n\n");
-    term_puts("changes the card, ESC closes\n\n");
+    term_goto(con, 0, SCR_HINT);
+    term_setcolor(0x07);
+    term_puts("up/down pick a row   left/right or n changes the card");
+    term_goto(con, 0, SCR_HINT + 1);
+    term_puts("enter applies the server   esc closes");
+
+    term_goto(con, 0, SCR_MSG);
+    term_setcolor(0x02);
     if (st.msg[0])
         term_puts(st.msg);
-    term_render(con);
+}
+
+void settings_app_repaint(struct console *con)
+{
+    settings_draw(con);
 }
 
 void settings_app_open(struct console *con)

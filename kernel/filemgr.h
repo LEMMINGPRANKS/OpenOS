@@ -9,5 +9,6 @@
 void filemgr_open(struct console *con);
 void filemgr_input(struct console *con, char c);
 void filemgr_click(struct console *con, int mx, int my, int dbl);
+void filemgr_app_repaint(struct console *con);   // after full cell renders
 
 #endif

@@ -9,5 +9,6 @@
 void internet_app_open(struct console *con);
 void internet_app_input(struct console *con, char c);
 void internet_app_click(struct console *con, int mx, int my);
+void internet_app_repaint(struct console *con);   // after full cell renders
 
 #endif

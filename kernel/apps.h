@@ -12,6 +12,9 @@ enum app_id {
     APP_INTERNET,
     APP_PAINT,
     APP_SETTINGS,
+    APP_MUSIC,
+    APP_DOWNLOAD,
+    APP_UPDATE,
     APP_COUNT
 };
 
@@ -19,6 +22,7 @@ void app_open(enum app_id app, struct console *con);
 void app_input(enum app_id app, struct console *con, char c);
 void app_click(enum app_id app, struct console *con, int mx, int my, int dbl);
 const char *app_name(enum app_id app);
+uint32_t app_accent(enum app_id app);   // brand colour, 0x00RRGGBB
 void app_set_arg(const char *arg);    // e.g. filename for APP_VIEWER/RUNNER
 const char *app_get_arg(void);
 
@@ -29,6 +33,7 @@ void app_repaint_pixels(enum app_id app, struct console *con,
                         uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 void app_pointer(enum app_id app, struct console *con,
                  int mx, int my, int left);
+void app_after_paint(enum app_id app, struct console *con);
 
 // Open path (absolute) in the right app window: .js runs, anything text
 // views. Returns 0 on success, -1 if no window/app matched it.

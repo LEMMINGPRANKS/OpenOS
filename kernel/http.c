@@ -138,6 +138,8 @@ static int http_request(uint32_t ip, uint16_t port,
 
 int http_get(const char *path, uint8_t *body, uint32_t max)
 {
+    if (http_ensure_net() != 0)            // bare http_get callers (apps) too
+        return -1;
     char req[160];
     char *p = req;
     const char *s;

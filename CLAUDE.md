@@ -234,6 +234,30 @@ Never invent other naming schemes. New devices join these registers.
   bm -> bookmark saved, cat of both files, and searches for pokemon +
   albert einstein from both the app and the shell fetch (real results
   rendered, E = mc² and all).
+- **v1.6.0** (2026-09-27) — **DONE**: Part 1 of the 1.6 overhaul — the
+  desktop. 1400x900 framebuffer. 2015-OS light theme: term.c renders
+  every VGA attribute through dual ink/paper palettes (dark inks on
+  white/light papers). App menu (kernel/menu.c): 3x3 grid of white
+  rounded tiles, keyboard arrows + Enter or click, and the Wii rule —
+  closing the last window puts you back on the menu. The per-second
+  taskbar repaint skips while the menu is open (it was restarting the
+  slow full-menu paint halfway through). Wii-style animated app-start
+  banners (kernel/banner.c: accent card, bouncing dots, shimmer bar).
+  Shared pixel appbar (kernel/appbar.c) + term_protect(): apps reserve
+  top console rows for pixel chrome that now survives scrolling,
+  focus changes and window drags (wm grew app_after_paint repaint
+  hooks). Every app overhauled to one quality bar: Shell, Notepad,
+  Viewer/Runner, Files (grey selection bands, pixel folder/file
+  icons), Internet (Chrome-style white tab strip, omnibox pill, giant
+  red italic INTERNET home page with a real search bar + clickable
+  bookmark tiles), Music (clickable tune cards + free-play piano
+  keys), Download (package rows with teal discs, one-key install),
+  Update (slot info, version list with running/stable dot icons),
+  Settings (band-selected rows). http_get now brings the network up
+  itself — apps no longer depend on the shell having run getspgk
+  first. Shell gained `files`, `music`, `download` window commands.
+  Verified headless in QEMU end to end, including a real package
+  install and the kernel version list over the network.
 - **next**: a terminal app with colours and scrollback; a music player
   that beeps tunes through the PC speaker
 
@@ -283,6 +307,12 @@ kernel/settings.c/.h # key=value settings store (/settings.txt -> DR1) + Setting
 kernel/marks.c/.h   # bookmarks + history (/bookmarks.txt, /history.txt) + home page
 kernel/version.h   # single OS_VERSION string used by every banner
 kernel/filemgr.c/.h # Files app: keyboard + mouse file browser
+kernel/menu.c/.h    # app menu overlay: 3x3 tile grid (keyboard + click)
+kernel/banner.c/.h  # Wii-style animated app-start splash
+kernel/appbar.c/.h  # shared pixel appbar for app windows (3 protected rows)
+kernel/music.c/.h   # Music app: tune cards + free-play keys (PC speaker)
+kernel/dlapp.c/.h   # Download app: spgk package browser + installer
+kernel/updapp.c/.h  # Update app: A/B kernel updater window
 kernel/pci.c/.h    # PCI config-space scan, BAR decode
 kernel/nic.c/.h    # NIC layer: probes the drivers below, routes frames to the one found
 kernel/e1000.c/.h  # Intel e1000/e1000e NIC driver (polling, legacy descriptors)

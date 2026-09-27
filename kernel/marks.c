@@ -103,53 +103,15 @@ void marks_history_add(const char *url)
     save_lines(HISTORY_FILE, lines, keep + 1);
 }
 
-// put "<li><a href='url'>label</a></li>" into buf
-static int put_link(char *buf, int max, int k, const char *url)
+// up to max bookmark urls (newest first), for the home page's tiles
+int marks_bookmarks(char out[][96], int max)
 {
-    static const char pre[] = "<li><a href='";
-    static const char mid[] = "'>";
-    static const char post[] = "</a></li>\n";
-    for (int i = 0; pre[i] && k < max - 1; i++)  buf[k++] = pre[i];
-    for (int i = 0; url[i] && k < max - 1; i++)  buf[k++] = url[i];
-    for (int i = 0; mid[i] && k < max - 1; i++)  buf[k++] = mid[i];
-    for (int i = 0; url[i] && k < max - 1; i++)  buf[k++] = url[i];
-    for (int i = 0; post[i] && k < max - 1; i++) buf[k++] = post[i];
-    return k;
-}
-
-static int put_str(char *buf, int max, int k, const char *s)
-{
-    for (int i = 0; s[i] && k < max - 1; i++)
-        buf[k++] = s[i];
-    return k;
-}
-
-int marks_home_page(char *buf, int max)
-{
-    static char bm[MARKS_MAX][MARK_LINE];
-    static char hi[MARKS_MAX][MARK_LINE];
-    int nb = load_lines(BOOKMARKS_FILE, bm);
-    int nh = load_lines(HISTORY_FILE, hi);
-
-    int k = 0;
-    k = put_str(buf, max, k,
-        "<html><head><title>Home</title></head><body><h1>OpenOS Home</h1>"
-        "<p>type an address like example.com -- or just words to search "
-        "the whole internet.</p><h2>Bookmarks</h2>");
-    if (!nb)
-        k = put_str(buf, max, k, "<p>(none yet -- load a page, then type "
-                                 "bm and press Enter)</p>");
-    for (int i = 0; i < nb; i++)
-        k = put_link(buf, max, k, bm[i]);
-    k = put_str(buf, max, k, "<h2>Recently visited</h2>");
-    if (!nh)
-        k = put_str(buf, max, k, "<p>(nothing yet)</p>");
-    for (int i = 0; i < nh; i++)
-        k = put_link(buf, max, k, hi[i]);
-    k = put_str(buf, max, k,
-        "<p><a href='/news'>news</a> <a href='/comments'>comments</a> "
-        "<a href='/roadmap'>ideas</a> <a href='/updates'>updates</a></p>"
-        "</body></html>");
-    buf[k] = 0;
-    return k;
+    static char lines[MARKS_MAX][MARK_LINE];
+    int n = load_lines(BOOKMARKS_FILE, lines);
+    if (n > max)
+        n = max;
+    for (int i = 0; i < n; i++)
+        for (int j = 0; j < MARK_LINE; j++)
+            out[i][j] = lines[i][j];
+    return n;
 }

@@ -8,17 +8,28 @@
 #define VGA_COLS  80
 #define VGA_ROWS  25
 
-static const uint32_t vga_pal[16] = {
-    0x000000, 0x0000AA, 0x00AA00, 0x00AAAA,
-    0xAA0000, 0xAA00AA, 0xAA5500, 0xAAAAAA,
-    0x555555, 0x5555FF, 0x55FF55, 0x55FFFF,
-    0xFF5555, 0xFF55FF, 0xFFFF55, 0xFFFFFF,
+// 2015-OS light theme: consoles still store classic VGA attributes, but
+// rendering maps them through these two palettes -- every background becomes
+// a white paper, every foreground a dark ink. One choke point, every app
+// restyles at once.
+static const uint32_t ink_pal[16] = {
+    0x3A3A42, 0x1E5AA8, 0x2E7D32, 0x00838F,   // black, blue, green, cyan
+    0xC62828, 0x8E24AA, 0xB8860B, 0x8A8A92,   // red, magenta, brown, grey
+    0x9A9AA4, 0x3B78C7, 0x43A047, 0x00ACC1,   // dark grey + bright variants
+    0xE53935, 0xAB47BC, 0xB8860B, 0x28282E,   // bright red/purple/gold/white
+};
+static const uint32_t paper_pal[16] = {
+    0xFFFFFF, 0xFFFFFF, 0xF3F9F3, 0xF0F7F8,   // black+blue -> paper white
+    0xFDF3F3, 0xF8F2FA, 0xFDF8EF, 0xEAEAEF,   // faint tints, grey selection
+    0xF4F4F7, 0xF4F4F7, 0xF4F4F7, 0xF4F4F7,
+    0xF4F4F7, 0xF4F4F7, 0xF4F4F7, 0xFFFFFF,
 };
 
 struct console {
     uint32_t vx, vy, vw, vh;            // pixel viewport
     uint16_t rows, cols;
     uint16_t crow, ccol;
+    uint16_t protect;                   // top rows owned by pixel toolbars
     uint8_t color;                      // vga attr for new writes
     uint8_t *cells;                     // rows*cols*2: char, vga color
 };
@@ -84,14 +95,14 @@ static void render_cell(struct console *c, uint16_t r, uint16_t col)
 {
     uint8_t *p = cell(c, r, col);
     gfx_char(c->vx + col * FONT_W, c->vy + r * FONT_H, (char)p[0],
-             vga_pal[p[1] & 0xF], vga_pal[(p[1] >> 4) & 0xF]);
+             ink_pal[p[1] & 0xF], paper_pal[(p[1] >> 4) & 0xF]);
 }
 
 void term_render(struct console *c)
 {
     if (!c)
         return;
-    for (uint16_t r = 0; r < c->rows; r++)
+    for (uint16_t r = c->protect; r < c->rows; r++)
         for (uint16_t col = 0; col < c->cols; col++)
             render_cell(c, r, col);
 }
@@ -139,6 +150,13 @@ void term_use(struct console *c)
 struct console *term_active(void)
 {
     return active;
+}
+
+void term_view(const struct console *c, uint32_t *x, uint32_t *y,
+               uint32_t *w, uint32_t *h)
+{
+    if (!c) { *x = *y = *w = *h = 0; return; }
+    *x = c->vx; *y = c->vy; *w = c->vw; *h = c->vh;
 }
 
 void term_move(struct console *c, uint32_t px, uint32_t py)
@@ -189,7 +207,7 @@ int term_locate(struct console *c, int mx, int my, int *col, int *row)
 
 static void scroll(struct console *c)
 {
-    for (uint32_t r = 1; r < c->rows; r++)
+    for (uint32_t r = c->protect + 1; r < c->rows; r++)
         for (uint32_t col = 0; col < c->cols; col++) {
             uint8_t *dst = cell(c, (uint16_t)(r - 1), (uint16_t)col);
             uint8_t *src = cell(c, (uint16_t)r, (uint16_t)col);
@@ -307,13 +325,30 @@ void term_clear(void)
 {
     if (!active)
         return;
-    for (uint32_t r = 0; r < active->rows; r++)
+    for (uint32_t r = active->protect; r < active->rows; r++)
         for (uint32_t col = 0; col < active->cols; col++) {
             uint8_t *p = cell(active, (uint16_t)r, (uint16_t)col);
             p[0] = ' ';
             p[1] = active->color;
         }
-    active->crow = 0;
+    active->crow = active->protect;
     active->ccol = 0;
     term_render(active);
+}
+
+// reserve the top n rows for a pixel toolbar: scrolling and full re-renders
+// leave them alone, so drawn chrome survives anything the app prints
+void term_protect(struct console *con, int rows)
+{
+    if (!con)
+        return;
+    if (rows < 0)
+        rows = 0;
+    if (rows > con->rows - 2)
+        rows = con->rows - 2;
+    con->protect = (uint16_t)rows;
+    if (con->crow < con->protect)
+        con->crow = con->protect;
+    if (con == active)
+        term_render(con);
 }
