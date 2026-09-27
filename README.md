@@ -1,15 +1,4 @@
 # OpenOS
-
-A 64-bit, open-source operating system written from scratch in C and assembly.
-
-Boots via GRUB (multiboot2) → climbs into x86-64 long mode → kernel takes over.
-
-## Try it
-
-```
-make run      # needs gcc, nasm, grub-mkrescue, qemu-system-x86_64
-```
-
-Roadmap: kernel → shell → desktop → tools. See CLAUDE.md for the milestone ladder.
-
-Author: Freddie (BDFL). Open source.
+x86-64 operating system. it is very simple, but will advance. use the code and change it if you want 
+update log
+1.0.0- the base OS. use at your own risk because it may have bugs
