@@ -209,6 +209,13 @@ Never invent other naming schemes. New devices join these registers.
   Verified in QEMU: list + pick 1.4.1 from a 1.4.4 boot (rebooted into
   it, A/B confirmed), then back to 1.4.4 through the old updater's
   stable path.
+- **v1.4.5** (2026-09-27) — **DONE**: stale-text fixes. (1) The Internet
+  app's context line (address bar / say / idea / hint rows) now pads the
+  rest of the row with spaces on every redraw, so shorter text can never
+  leave the tail of longer text behind. (2) term.c scroll() now resets
+  the colour attribute of the bottom row too (chars were cleared but old
+  colours leaked through after scrolling -- the getspgk/update residue).
+  Verified in QEMU by decoding screendumps against kernel/font.c glyphs.
 - **next**: a search engine (BDFL's own idea, posted from the Ideas
   tab), bookmarks + history in the browser
 

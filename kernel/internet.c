@@ -132,6 +132,12 @@ static void context_draw(struct console *con)
         term_setcolor(COL_TEXT);
         term_puts("u check  i install kernel  r reboot");
     }
+    // wipe the rest of the row: shorter text must never leave stale tails
+    // (stop one column short -- a write on the last column wraps the line)
+    int col = 0;
+    term_pos(con, &col, 0);
+    for (; col + 1 < (int)term_cols(con); col++)
+        term_putc(' ');
     term_putc('\n');
     term_setcolor(COL_TEXT);
 }

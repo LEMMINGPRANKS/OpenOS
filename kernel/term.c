@@ -199,6 +199,7 @@ static void scroll(struct console *c)
     for (uint32_t col = 0; col < c->cols; col++) {
         uint8_t *p = cell(c, (uint16_t)(c->rows - 1), (uint16_t)col);
         p[0] = ' ';
+        p[1] = c->color;                // old colours must not leak through
     }
     term_render(c);
 }
