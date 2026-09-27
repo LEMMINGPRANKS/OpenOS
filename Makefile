@@ -55,22 +55,24 @@ kernel.flat: kernel.bin
 bios/mbr.bin: bios/mbr.asm bios/layout.inc
 	$(AS) -f bin -I bios/ -o $@ bios/mbr.asm
 
-bios/stage2.bin: bios/stage2.asm bios/layout.inc kernel.flat initrd.tar
+bios/stage2.bin: bios/stage2.asm bios/layout.inc kernel.flat
 	$(AS) -f bin -I bios/ -o $@ bios/stage2.asm \
 	    -D ENTRY_OFF=$(shell printf '%d' $$(( $$(nm kernel.bin | awk '/ T _start$$/ {print "0x"$$1}') - 0x100000 ))) \
 	    -D KERNEL_SECTORS=$(shell echo $$(( ($$(stat -c%s kernel.flat) + 511) / 512 ))) \
-	    -D INITRD_SECTORS=$(shell echo $$(( ($$(stat -c%s initrd.tar) + 511) / 512 ))) \
-	    -D INITRD_BYTES=$(shell stat -c%s initrd.tar) \
 	    -D BSS_END_OFF=$(shell printf '%d' $$(( $$(nm kernel.bin | awk '/ B __kernel_end$$/ {print "0x"$$1}') - 0x100000 )))
 
-openos.img: bios/mbr.bin bios/stage2.bin kernel.flat initrd.tar
+# the DR1 seed: every initrd/ file pre-packed as the on-disk store, so
+# OpenOS boots with its whole filesystem on DR1 (no initramfs in the boot)
+store-seed.img: tools/mkstore.py $(INITRD_FILES)
+	python3 tools/mkstore.py initrd store-seed.img
+
+openos.img: bios/mbr.bin bios/stage2.bin kernel.flat store-seed.img
 	dd if=/dev/zero of=openos.img bs=1M count=16 status=none
-	dd if=bios/mbr.bin    of=openos.img                    conv=notrunc status=none
-	dd if=bios/stage2.bin of=openos.img bs=512 seek=1      conv=notrunc status=none
-	dd if=kernel.flat     of=openos.img bs=512 seek=128    conv=notrunc status=none
-	dd if=initrd.tar      of=openos.img bs=512 seek=1152   conv=notrunc status=none
+	dd if=bios/mbr.bin     of=openos.img                    conv=notrunc status=none
+	dd if=bios/stage2.bin  of=openos.img bs=512 seek=1      conv=notrunc status=none
+	dd if=kernel.flat      of=openos.img bs=512 seek=128    conv=notrunc status=none
+	dd if=store-seed.img   of=openos.img bs=512 seek=2048   conv=notrunc status=none
 	test $$(stat -c%s kernel.flat) -le $$(( 512 * 1024 ))
-	test $$(stat -c%s initrd.tar) -le $$(( 448 * 1024 ))
 
 imgrun: openos.img
 	qemu-system-x86_64 -drive file=openos.img,format=raw,if=ide,index=0,media=disk

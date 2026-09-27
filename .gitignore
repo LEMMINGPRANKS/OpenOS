@@ -8,3 +8,4 @@ kernel.flat
 openos.img
 store.img
 bios/*.bin
+store-seed.img

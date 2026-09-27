@@ -1,13 +1,12 @@
 ; OpenBIOS stage2 -- real mode: memory map (E820), A20, load the kernel
-; and initrd from disk; then protected mode: copy them up to their final
-; homes, zero the kernel's bss, build a fake multiboot2 info block, and
-; boot the kernel exactly the way GRUB would have.
+; from disk; then protected mode: copy it up to its final home, zero the
+; kernel's bss, build a fake multiboot2 info block, and boot the kernel
+; exactly the way GRUB would have. No initramfs: every file lives in the
+; DR1 store on disk, and the kernel reads them with its own ATA driver.
 ;
 ; The Makefile patches in real sizes:
 ;   ENTRY_OFF      _start offset inside kernel.flat
 ;   KERNEL_SECTORS sectors of kernel.flat on disk
-;   INITRD_SECTORS sectors of initrd.tar on disk
-;   INITRD_BYTES   exact size of initrd.tar
 ;   BSS_END_OFF    __kernel_end - 1 MiB (zero up to here)
 
 %include "layout.inc"
@@ -17,12 +16,6 @@
 %endif
 %ifndef KERNEL_SECTORS
 %define KERNEL_SECTORS 192
-%endif
-%ifndef INITRD_SECTORS
-%define INITRD_SECTORS 32
-%endif
-%ifndef INITRD_BYTES
-%define INITRD_BYTES 16384
 %endif
 %ifndef BSS_END_OFF
 %define BSS_END_OFF 0x1B0000
@@ -110,16 +103,6 @@ start:
     mov ebx, KERNEL_LBA
     mov cx, KERNEL_SECTORS
     mov ax, KERNEL_LOAD >> 4
-    mov es, ax
-    xor di, di
-    call read_disk
-
-    ; --- load the initrd: INITRD_LBA -> INITRD_LOAD ---
-    mov si, msg_initrd
-    call puts
-    mov ebx, INITRD_LBA
-    mov cx, INITRD_SECTORS
-    mov ax, INITRD_LOAD >> 4
     mov es, ax
     xor di, di
     call read_disk
@@ -316,7 +299,6 @@ vbe_ok:      db 0
 msg_stage2: db "OpenBIOS stage2", 13, 10, 0
 msg_mem:    db " memory mapped", 13, 10, 0
 msg_kernel: db " loading kernel", 13, 10, 0
-msg_initrd: db " loading initrd", 13, 10, 0
 msg_pm:     db " protected mode...", 13, 10, 0
 msg_novbe:  db " no VBE -- serial shell boot", 13, 10, 0
 msg_disk:   db "disk read failed 0x", 0
@@ -338,12 +320,6 @@ pm_start:
     mov esi, KERNEL_LOAD
     mov edi, KERNEL_ADDR
     mov ecx, KERNEL_SECTORS * 128    ; sectors -> dwords
-    rep movsd
-
-    ; copy the initrd up too
-    mov esi, INITRD_LOAD
-    mov edi, INITRD_ADDR
-    mov ecx, (INITRD_BYTES + 3) / 4
     rep movsd
 
     ; zero the kernel's bss (GRUB did this for ELF; we do it for flat)
@@ -372,23 +348,7 @@ pm_start:
     stosd
     stosd                            ; string NUL + pad -> 24 bytes total
 
-    ; tag 3: module (the initrd)
-    mov eax, 3
-    stosd
-    mov eax, 32                      ; 8 hdr + 8 addrs + 11 string, rounded
-    stosd
-    mov eax, INITRD_ADDR
-    stosd                            ; mod_start
-    mov eax, INITRD_ADDR + INITRD_BYTES
-    stosd                            ; mod_end
-    mov eax, 'init'
-    stosd
-    mov eax, 'rd.t'
-    stosd
-    mov eax, 'ar'                    ; "ar\0\0"
-    stosd
-    xor eax, eax
-    stosd                            ; pad -> 32 bytes total
+    ; (no module tag: OpenOS boots with DR1 as its filesystem)
 
     ; tag 6: memory map -- E820 entries copied verbatim (24 bytes each)
     mov eax, 6

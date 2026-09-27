@@ -41,9 +41,17 @@ void kmain(unsigned long magic, unsigned long addr)
         term_puts("   warning: multiboot2 magic check FAILED\n");
 
     ramfs_init();
-    int restored = store_load();        // DR1: files saved last time come back
-    if (restored > 0)
-        term_puts("   DR1 store: files restored from disk\n");
+    int restored = store_load();        // DR1: the filesystem, restored at boot
+    if (restored > 0) {
+        term_puts("   DR1: ");
+        // print_u64 is in shell.c; keep it simple with a small loop-free int
+        char digits[12];
+        int n = 0, v = restored;
+        if (!v) digits[n++] = '0';
+        while (v) { digits[n++] = (char)('0' + v % 10); v /= 10; }
+        while (n) term_putc(digits[--n]);
+        term_puts(" files restored from disk\n");
+    }
 
     desktop_run();                     // boots into desktop (or plain shell)
 }
