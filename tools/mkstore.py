@@ -20,7 +20,7 @@ OUT = sys.argv[2] if len(sys.argv) > 2 else "store.img"
 STORE_LBA = 2048
 STORE_TABLE_SECTORS = 8
 STORE_DATA_LBA = STORE_LBA + 1 + STORE_TABLE_SECTORS
-STORE_MAX_SECTORS = 1024                 # 512 KiB, matches store.h
+STORE_MAX_SECTORS = 8192                 # 4 MiB, matches store.h
 RAMFS_NAME_MAX = 64
 WMBG_HDR = 14
 

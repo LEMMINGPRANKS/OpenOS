@@ -5,7 +5,7 @@
 ;   LBA      1-127    stage2 (up to 64 KiB)
 ;   LBA    128-1151   kernel.flat (up to 512 KiB)
 ;   LBA   1152-2047   free (old initrd.tar home; available for growth)
-;   LBA   2048-3071   DR1 store (superblock + WMBG files = the filesystem)
+;   LBA   2048-8191   DR1 store (superblock + WMBG files = the filesystem)
 
 STAGE2_LBA    equ 1
 STAGE2_SECT   equ 128

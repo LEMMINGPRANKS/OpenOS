@@ -9,7 +9,7 @@
 // into ramfs at boot. Superblock + file table + data sectors.
 
 #define STORE_LBA         2048        // first sector of the store region
-#define STORE_MAX_SECTORS 1024        // 512 KiB of files
+#define STORE_MAX_SECTORS 8192        // 4 MiB of files
 #define STORE_MAGIC       "OPENOSST"
 
 int store_load(void);                 // boot: returns files restored (-1 err)

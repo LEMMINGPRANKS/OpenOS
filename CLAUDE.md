@@ -100,6 +100,18 @@ Never invent other naming schemes. New devices join these registers.
   Verified: install-over-TCP -> save -> `make` rebuild -> boot -> the
   downloaded file is still there. store.img is user data: never gitignore
   it away, never clean it.
+- **v1.3.0** (2026-09-27) — **DONE**: Paint! A real drawing app.
+  kernel/paint.c: 480x320 RGB canvas (kmalloc'd), 16 colours, 4 brush
+  sizes, eraser, clear; mouse strokes with interpolation, incremental
+  dirty-rect blits so drawing keeps up with the brush. kernel/png.c:
+  a from-scratch PNG codec — CRC-32, Adler-32, zlib stream made of
+  deflate *stored* blocks (real PNGs, viewable anywhere, no inflater
+  needed to decode our own). **S** saves /paint.png (paint2, 3...) into
+  ramfs + DR1 and the icon appears on the desktop instantly; opening a
+  .png loads it back into Paint (stored-block PNGs; compressed ones are
+  politely refused for now). WM grew pixel-app hooks
+  (app_wants_pixels/app_repaint_pixels/app_pointer) alongside text apps.
+  Heap 1->4 MiB, store region 2048-8191 (4 MiB) to fit real images.
 - **v1.1.0** (BDFL decree, 2026-09-26) — **DONE**:
   - DR1: ATA PIO driver (kernel/ata.c) — IDENTIFY, LBA28 read/write with
     time-based BSY/DRQ waits (FLUSH CACHE in QEMU is a host fsync: it can
@@ -119,8 +131,8 @@ Never invent other naming schemes. New devices join these registers.
     boots any BIOS PC.
   - The disk-layout law (bios/layout.inc, ONE law for MBR/stage2/Makefile):
     LBA 0 MBR, 1-127 stage2, 128-1151 kernel.flat, 1152-2047 free (was
-    initrd.tar until v1.2.0), 2048-3071 DR1 store (superblock + table +
-    WMBG files)
+    initrd.tar until v1.2.0), 2048-8191 DR1 store (superblock + table +
+    WMBG files; 4 MiB since v1.3.0)
 - **next**: full from-scratch web browser (DNS -> HTTP -> HTML subset ->
   WM window; Electron is impossible — it needs a host OS underneath)
 
@@ -179,6 +191,8 @@ kernel/panic.c/.h  # kpanic: red screen, halt on purpose
 kernel/ata.c/.h    # DR1: ATA PIO driver (IDENTIFY, LBA28 read/write)
 kernel/tar.c/.h    # shared ustar walker (initrd + store)
 kernel/store.c/.h  # DR1 store: OPENOSST superblock + per-file WMBG archives
+kernel/paint.c/.h  # Paint: canvas, palette, strokes, PNG save/load
+kernel/png.c/.h    # from-scratch PNG codec (stored-block zlib, CRC+Adler)
 bios/layout.inc    # the disk-layout law (LBAs + load addresses, ONE source)
 bios/mbr.asm       # OpenBIOS stage 1: the first 512 bytes of the drive
 bios/stage2.asm    # OpenBIOS stage 2: E820, A20, VBE, fake multiboot2, kernel

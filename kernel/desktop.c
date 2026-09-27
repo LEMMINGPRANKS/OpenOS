@@ -7,9 +7,11 @@
 #include "term.h"
 #include "wm.h"
 #include "apps.h"
+#include "paint.h"
 #include "shell.h"
 #include "files.h"
 #include "path.h"
+#include "version.h"
 
 // The desktop OpenOS boots into: wallpaper, taskbar with app launchers
 // and a live clock, and windows managed by wm.c.
@@ -33,6 +35,8 @@
 #define TB_NEWS_W   (4 * FONT_W + 12)
 #define TB_WEB_X    (TB_NEWS_X + TB_NEWS_W + TB_BTN_GAP)
 #define TB_WEB_W    (7 * FONT_W + 12)
+#define TB_PAINT_X  (TB_WEB_X + TB_WEB_W + TB_BTN_GAP)
+#define TB_PAINT_W  (5 * FONT_W + 12)
 
 #define SHELL_WIN_W 496
 #define SHELL_WIN_H 320
@@ -75,7 +79,7 @@ static void wallpaper(void)
         gfx_fill_rect(0, y, w, 1, (r << 16) | (g << 8) | b);
     }
     gfx_text_fg(24, 28, "OpenOS", 0x2A3C5E);
-    gfx_text_fg(24, 28 + FONT_H + 4, "1.1.0 desktop", 0x2A3C5E);
+    gfx_text_fg(24, 28 + FONT_H + 4, OS_VERSION " desktop", 0x2A3C5E);
 }
 
 static void taskbar(void)
@@ -96,6 +100,8 @@ static void taskbar(void)
     gfx_text(TB_NEWS_X + 6, y + TB_BTN_Y + 2, "News", 0xFFFFFF, 0x3050C8);
     gfx_fill_rect(TB_WEB_X, y + TB_BTN_Y, TB_WEB_W, TB_BTN_H, 0x3050C8);
     gfx_text(TB_WEB_X + 6, y + TB_BTN_Y + 2, "Browser", 0xFFFFFF, 0x3050C8);
+    gfx_fill_rect(TB_PAINT_X, y + TB_BTN_Y, TB_PAINT_W, TB_BTN_H, 0x3050C8);
+    gfx_text(TB_PAINT_X + 6, y + TB_BTN_Y + 2, "Paint", 0xFFFFFF, 0x3050C8);
 
     uint64_t s = timer_uptime_ms() / 1000;
     char clock[16];
@@ -198,6 +204,10 @@ static void taskbar_click(int mx, int my)
                my >= (int32_t)y && my < (int32_t)(y + TB_BTN_H)) {
         app_set_arg("");
         wm_open(APP_BROWSER, wx, wy, NOTE_WIN_W, 424);
+    } else if (mx >= (int32_t)TB_PAINT_X && mx < (int32_t)(TB_PAINT_X + TB_PAINT_W) &&
+               my >= (int32_t)y && my < (int32_t)(y + TB_BTN_H)) {
+        app_set_arg("");
+        wm_open(APP_PAINT, 60, 40, PAINT_WIN_W, PAINT_WIN_H);
     }
 }
 

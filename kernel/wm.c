@@ -22,6 +22,7 @@ static struct window wins[WM_MAX_WINDOWS];
 static int focus = -1;
 static uint8_t prev_left;
 static int drag_win = -1;
+static int ptr_win = -1;                   // pixel app owning the pointer
 static int drag_dx, drag_dy;
 static void (*repaint_all)(void);
 
@@ -45,7 +46,11 @@ static void paint_window(struct window *w, int focused)
                   w->y + (WM_TITLE_H - WM_CLOSE_BOX) / 2,
                   WM_CLOSE_BOX, WM_CLOSE_BOX, WM_CLOSE_COL);
     gfx_fill_rect(w->x, w->y + WM_TITLE_H, w->w, w->h - WM_TITLE_H, WM_BODY_BG);
-    term_render(w->con);
+    if (app_wants_pixels(w->app))
+        app_repaint_pixels(w->app, w->con, w->x, w->y + WM_TITLE_H,
+                           w->w, w->h - WM_TITLE_H);
+    else
+        term_render(w->con);
     gfx_rect(w->x, w->y, w->w, w->h, WM_BORDER);
 }
 
@@ -201,6 +206,9 @@ int wm_mouse(int mx, int my, uint8_t buttons)
                     drag_win = hit;
                     drag_dx = mx - (int)w->x;
                     drag_dy = my - (int)w->y;
+                } else if (app_wants_pixels(w->app)) {
+                    ptr_win = hit;     // pixel app: press/drag/release
+                    app_pointer(w->app, w->con, mx, my, 1);
                 } else {              // click inside the app body
                     static uint64_t last_ms;
                     static int last_win = -1;
@@ -214,6 +222,20 @@ int wm_mouse(int mx, int my, uint8_t buttons)
             prev_left = (uint8_t)left;
             return 1;
         }
+    }
+    if (ptr_win >= 0) {                // pixel app drag / release
+        if (!wins[ptr_win].used)
+            ptr_win = -1;
+        else {
+            if (left)
+                app_pointer(wins[ptr_win].app, wins[ptr_win].con, mx, my, 1);
+            else {
+                app_pointer(wins[ptr_win].app, wins[ptr_win].con, mx, my, 0);
+                ptr_win = -1;
+            }
+        }
+        prev_left = (uint8_t)left;
+        return 1;
     }
     prev_left = (uint8_t)left;
     return 0;

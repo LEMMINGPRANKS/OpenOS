@@ -14,6 +14,7 @@
 #include "gfx.h"
 #include "wm.h"
 #include "apps.h"
+#include "paint.h"
 #include "http.h"
 #include "desktop.h"
 #include "version.h"
@@ -500,6 +501,13 @@ void shell_execute(char *cmdline)
             wm_open(APP_NEWS, 60, 40, 432, 424);
         else
             news_fetch(term_active());  // headless: straight to the console
+    }
+    else if (!strcmp(cmdline, "paint")) {
+        if (gfx_available()) {
+            app_set_arg(arg ? arg : "");
+            wm_open(APP_PAINT, 60, 40, PAINT_WIN_W, PAINT_WIN_H);
+        } else
+            term_puts("paint needs the desktop (framebuffer)\n");
     }
     else if (!strcmp(cmdline, "dev"))    dev_list();
     else if (!strcmp(cmdline, "disk"))   cmd_disk(arg);

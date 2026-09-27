@@ -4,7 +4,7 @@
 // living in a fixed pool for now. Drawing pages from the PMM dynamically
 // comes with virtual memory (higher-half + vmap) later.
 
-#define HEAP_SIZE (1024 * 1024)          // 1 MiB
+#define HEAP_SIZE (4 * 1024 * 1024)      // 4 MiB (Paint canvases + PNGs)
 #define ALIGN 16
 
 struct block {

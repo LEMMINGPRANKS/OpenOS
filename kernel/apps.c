@@ -14,6 +14,8 @@
 #include "desktop.h"
 #include "store.h"
 #include "timer.h"
+#include "paint.h"
+#include "png.h"
 
 // Apps are the things that can live inside a window. Each app gets
 // keyboard chars through app_input with the window's console.
@@ -39,6 +41,11 @@ void app_set_arg(const char *arg)
     for (int i = 0; i < 31 && arg[i]; i++)
         app_arg[i] = arg[i];
     app_arg[31] = 0;
+}
+
+const char *app_get_arg(void)
+{
+    return app_arg;
 }
 
 static void viewer_open(struct console *con)
@@ -438,6 +445,8 @@ int open_file_window(const char *path)
         return wm_open(APP_RUNNER, 110, 80, OPEN_WIN_W, OPEN_WIN_H);
     if (ends_with(path, ".html"))
         return wm_open(APP_BROWSER, 110, 80, OPEN_WIN_W, 424);
+    if (ends_with(path, ".png"))
+        return wm_open(APP_PAINT, 60, 40, PAINT_WIN_W, PAINT_WIN_H);
     if (ext_is_text(path))
         return wm_open(APP_VIEWER, 110, 80, OPEN_WIN_W, OPEN_WIN_H);
     return -1;                        // unknown/binary type
@@ -513,6 +522,8 @@ void app_open(enum app_id app, struct console *con)
         browser_open(con);
     else if (app == APP_NEWS)
         news_fetch(con);
+    else if (app == APP_PAINT)
+        paint_open(con);
 }
 
 void app_input(enum app_id app, struct console *con, char c)
@@ -525,6 +536,8 @@ void app_input(enum app_id app, struct console *con, char c)
         filemgr_input(con, c);
     else if (app == APP_BROWSER)
         browser_input(con, c);
+    else if (app == APP_PAINT)
+        paint_input(con, c);
     (void)con; (void)c;                // other apps take no keyboard input
 }
 
@@ -537,6 +550,25 @@ void app_click(enum app_id app, struct console *con, int mx, int my, int dbl)
     (void)mx; (void)my; (void)dbl;
 }
 
+int app_wants_pixels(enum app_id app)
+{
+    return app == APP_PAINT;
+}
+
+void app_repaint_pixels(enum app_id app, struct console *con,
+                        uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+{
+    if (app == APP_PAINT)
+        paint_repaint(con, x, y, w, h);
+}
+
+void app_pointer(enum app_id app, struct console *con,
+                 int mx, int my, int left)
+{
+    if (app == APP_PAINT)
+        paint_pointer(con, mx, my, left);
+}
+
 const char *app_name(enum app_id app)
 {
     if (app == APP_SHELL)   return "Shell";
@@ -546,5 +578,6 @@ const char *app_name(enum app_id app)
     if (app == APP_RUNNER)  return "Runner";
     if (app == APP_BROWSER) return "Browser";
     if (app == APP_NEWS)    return "News";
+    if (app == APP_PAINT)   return "Paint";
     return "?";
 }
