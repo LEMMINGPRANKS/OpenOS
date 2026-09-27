@@ -127,14 +127,30 @@ static int streq_len(const char *a, const char *b, int n)
     return 1;
 }
 
+// "/kernel/manifest.txt" (stable channel) or "/kernel/v1.4.1/manifest.txt"
+static void kpath(char *out, const char *ver, const char *file)
+{
+    char *p = out;
+    for (const char *s = "/kernel/"; *s; s++) *p++ = *s;
+    if (ver && ver[0]) {
+        *p++ = 'v';
+        for (const char *s = ver; *s; s++) *p++ = *s;
+        *p++ = '/';
+    }
+    for (const char *s = file; *s; s++) *p++ = *s;
+    *p = 0;
+}
+
 // manifest.txt lines: version=1.3.1  size=83968  entry=48  bss=4931584
-int kupdate_check(char *ver_out, int ver_max,
+int kupdate_check(const char *ver, char *ver_out, int ver_max,
                   uint32_t *size, uint32_t *entry, uint32_t *bss)
 {
     if (http_ensure_net() != 0)
         return -1;
     static char buf[512];
-    int n = http_get("/kernel/manifest.txt", (uint8_t *)buf, sizeof buf - 1);
+    char path[48];
+    kpath(path, ver, "manifest.txt");
+    int n = http_get(path, (uint8_t *)buf, sizeof buf - 1);
     if (n <= 0)
         return -1;
     buf[n] = 0;
@@ -186,11 +202,51 @@ static int same512(const uint8_t *a, const uint8_t *b)
     return 1;
 }
 
-int kupdate_install(void)
+int kupdate_list(void)
 {
-    char ver[24];
+    if (http_ensure_net() != 0)
+        return -1;
+    static char buf[512];
+    int n = http_get("/kernel/versions", (uint8_t *)buf, sizeof buf - 1);
+    if (n <= 0) {
+        term_puts("could not reach the update server\n");
+        return -1;
+    }
+    buf[n] = 0;
+    term_puts("kernel versions on the server:\n");
+    int i = 0;
+    while (i < n) {
+        int e = i;
+        while (e < n && buf[e] != '\n' && buf[e] != '\r')
+            e++;
+        if (e > i) {
+            term_puts("  ");
+            for (int k = i; k < e; k++)
+                term_putc(buf[k]);
+            int vl = 0;
+            while (OS_VERSION[vl]) vl++;
+            int tl = i;
+            while (tl < e && buf[tl] != ' ')
+                tl++;
+            if (tl - i == vl && streq_len(buf + i, OS_VERSION, vl))
+                term_puts("   <- running");
+            term_putc('\n');
+        }
+        i = e + 1;
+        while (i < n && (buf[i] == '\n' || buf[i] == '\r'))
+            i++;
+    }
+    term_puts("pick one: update kernel <version>\n");
+    return 0;
+}
+
+int kupdate_install(const char *ver)
+{
+    if (ver && streq(ver, "stable"))
+        ver = 0;
+    char verbuf[24];
     uint32_t size = 0, entry = 0, bss = 0;
-    int c = kupdate_check(ver, sizeof ver, &size, &entry, &bss);
+    int c = kupdate_check(ver, verbuf, sizeof verbuf, &size, &entry, &bss);
     if (c == 1) {
         term_puts("kernel is already up to date (");
         term_puts(OS_VERSION ")\n");
@@ -204,7 +260,7 @@ int kupdate_install(void)
         return -1;
     }
     term_puts("downloading kernel ");
-    term_puts(ver);
+    term_puts(verbuf);
     term_puts("...\n");
 
     uint8_t *kbuf = kmalloc(KUPDATE_MAX);
@@ -212,7 +268,9 @@ int kupdate_install(void)
         return -1;
     for (uint32_t i = 0; i < KUPDATE_MAX; i++)
         kbuf[i] = 0;
-    int n = http_get("/kernel/kernel.flat", kbuf, size);
+    char flatpath[48];
+    kpath(flatpath, ver, "kernel.flat");
+    int n = http_get(flatpath, kbuf, size);
     if (n != (int)size) {
         term_puts("download failed or short (got ");
         char d[12];
@@ -286,7 +344,7 @@ int kupdate_install(void)
     }
     ata_restore();
     term_puts("kernel ");
-    term_puts(ver);
+    term_puts(verbuf);
     term_puts(" staged in slot ");
     term_putc('A' + slot);
     term_puts(" -- reboot to switch to it\n");

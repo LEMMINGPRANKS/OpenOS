@@ -70,18 +70,29 @@ bios/other.bin: bios/other.asm
 store-seed.img: tools/mkstore.py $(INITRD_FILES)
 	python3 tools/mkstore.py initrd store-seed.img
 
-# publish the current kernel to the spgk server's packages/ dir, ready for
-# `update kernel` / the Update Manager to fetch (server serves packages/*)
+# publish the current kernel to the spgk server as its own version dir
+# (packages/kernel/v<version>/). Unstable until you promote it:
+#   make publish-stable   (writes packages/kernel/stable from version.h)
 publish-kernel: kernel.flat
-	mkdir -p packages/kernel
-	cp kernel.flat packages/kernel/kernel.flat
+	$(eval VER := $(shell sed -n 's/^#define OS_VERSION "\(.*\)"/\1/p' kernel/version.h))
+	mkdir -p packages/kernel/v$(VER)
+	cp kernel.flat packages/kernel/v$(VER)/kernel.flat
 	printf 'version=%s\nsize=%s\nentry=%s\nbss=%s\n' \
-	    $$(sed -n 's/^#define OS_VERSION "\(.*\)"/\1/p' kernel/version.h) \
+	    $(VER) \
 	    $$(stat -c%s kernel.flat) \
 	    $$(printf '%d' $$(( $$(nm kernel.bin | awk '/ T _start$$/ {print "0x"$$1}') - 0x100000 ))) \
 	    $$(printf '%d' $$(( $$(nm kernel.bin | awk '/ B __kernel_end$$/ {print "0x"$$1}') - 0x100000 ))) \
-	    > packages/kernel/manifest.txt
-	@echo "published kernel to packages/kernel/ (server: python3 tools/spgk-server.py)"
+	    > packages/kernel/v$(VER)/manifest.txt
+	@echo "published kernel $(VER) to packages/kernel/v$(VER)/"
+	@if [ ! -f packages/kernel/stable ]; then \
+	    echo $(VER) > packages/kernel/stable; \
+	    echo "no stable was set -- $(VER) is now the stable channel"; \
+	fi
+
+publish-stable: kernel.flat
+	$(eval VER := $(shell sed -n 's/^#define OS_VERSION "\(.*\)"/\1/p' kernel/version.h))
+	@echo $(VER) > packages/kernel/stable
+	@echo "stable channel now serves $(VER)"
 
 # dual-boot boot image: real partition table, fake-other-OS partition,
 # OpenOS partition (type 0x7F) holding stage2 + kernel slot A + store seed

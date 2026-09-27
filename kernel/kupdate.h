@@ -22,13 +22,19 @@ int  kupdate_was_candidate(void);
 // last-known-good so stage2 keeps booting it. 0 = ok / nothing to do.
 int  kupdate_confirm(void);
 
-// Ask the server about a kernel update. 0 = there is one (fills version,
-// size, entry, bss), 1 = we're current, -1 = couldn't reach the server.
-int  kupdate_check(char *ver_out, int ver_max,
+// Ask the server about a kernel update. ver = 0 checks the stable channel,
+// a string like "1.4.1" checks that exact version. 0 = there is one (fills
+// version, size, entry, bss), 1 = we're current, -1 = couldn't reach.
+int  kupdate_check(const char *ver, char *ver_out, int ver_max,
                    uint32_t *size, uint32_t *entry, uint32_t *bss);
 
-// Download + install the kernel from the server into the other slot and
-// stage it in the A/B header; the caller reboots. 0 = ok, negative = fail.
-int  kupdate_install(void);
+// Print every kernel version the server offers (stable + unstable).
+int  kupdate_list(void);
+
+// Download + install a kernel into the other slot and stage it in the A/B
+// header; the caller reboots. ver = 0 (or "stable") installs the stable
+// channel, any other version string installs that one (downgrades allowed
+// -- that's how you roll back). 0 = ok, negative = fail.
+int  kupdate_install(const char *ver);
 
 #endif

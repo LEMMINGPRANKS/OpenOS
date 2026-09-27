@@ -334,7 +334,8 @@ static void updates_show(struct console *con)
     term_puts(OS_VERSION " (kernel slot ");
     term_putc('A' + kupdate_boot_slot());
     term_puts(")\n\n");
-    term_puts("  u  check the update server\n");
+    term_puts("  u  check the update server (stable channel)\n");
+    term_puts("  l  list every kernel version (stable + unstable)\n");
     term_puts("  i  download + install the new kernel\n");
     term_puts("  r  reboot (activates a staged update)\n");
     chrome_draw(con);
@@ -349,7 +350,7 @@ static void updates_key(struct console *con, char c)
         term_puts("checking the update server...\n");
         char ver[24];
         uint32_t size = 0, entry = 0, bss = 0;
-        int r = kupdate_check(ver, sizeof ver, &size, &entry, &bss);
+        int r = kupdate_check(0, ver, sizeof ver, &size, &entry, &bss);
         if (r == 1)
             term_puts("kernel is up to date (" OS_VERSION ")\n");
         else if (r != 0)
@@ -367,7 +368,10 @@ static void updates_key(struct console *con, char c)
             term_puts(" bytes)\npress i to install it\n");
         }
     } else if (c == 'i' || c == 'I') {
-        kupdate_install();
+        kupdate_install(0);
+    } else if (c == 'l' || c == 'L') {
+        term_puts("checking the update server...\n");
+        kupdate_list();
     } else if (c == 'r' || c == 'R') {
         term_puts("rebooting...\n");
         upd_outb(0x64, 0xFE);            // 8042 pulse reset line

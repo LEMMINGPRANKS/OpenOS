@@ -194,6 +194,21 @@ Never invent other naming schemes. New devices join these registers.
   once at first bring-up (http_net_forget re-arms it). Verified in QEMU
   with two NICs: live switch e1000 -> rtl8139 (and back), missing-card
   fallback, server change, cold-reboot persistence.
+- **v1.4.4** (2026-09-27) — **DONE**: kernel version selector (stable +
+  unstable channels). The server keeps each kernel in its own dir
+  (packages/kernel/v<version>/ with kernel.flat + manifest.txt) and a
+  `stable` file names the stable channel; /kernel/versions lists them all
+  ("1.4.1 stable", "1.4.3 unstable", ...) and the classic
+  /kernel/manifest.txt + /kernel/kernel.flat serve whatever stable points
+  at, so older OpenOS updaters keep working. In OpenOS: `update kernel`
+  lists every version (marking the running one), `update kernel <version>`
+  installs that exact one -- downgrades allowed, that's the rollback path.
+  Updates tab: l lists versions. `make publish-kernel` publishes the
+  current build into its version dir (unstable until promoted);
+  `make publish-stable` flips the stable channel to the current version.
+  Verified in QEMU: list + pick 1.4.1 from a 1.4.4 boot (rebooted into
+  it, A/B confirmed), then back to 1.4.4 through the old updater's
+  stable path.
 - **next**: a search engine (BDFL's own idea, posted from the Ideas
   tab), bookmarks + history in the browser
 

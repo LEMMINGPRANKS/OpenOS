@@ -145,7 +145,7 @@ static void cmd_help(void)
     term_puts("  internet      the Internet app (browser + news + updates + comments)\n");
     term_puts("  settings      settings app (network card, package server)\n");
     term_puts("  update        install fresh features from the update server\n");
-    term_puts("  update kernel install a new KERNEL into the other slot (A/B)\n");
+    term_puts("  update kernel list kernel versions; update kernel <ver> picks one\n");
     term_puts("  dev           show device registers (DR/IR/UR)\n");
     term_puts("  disk          DR1 info ('disk test' writes + reads a sector)\n");
     term_puts("  save          copy all ramfs files to DR1 (survives reboot)\n");
@@ -283,11 +283,25 @@ static void cmd_banner(void)
     term_puts("\n   OpenOS " OS_VERSION "   cd + OpenJS + browser + news + updates\n\n");
 }
 
+static int starts_with(const char *s, const char *pre)
+{
+    while (*pre)
+        if (*s++ != *pre++)
+            return 0;
+    return 1;
+}
+
 // the updater: ask the server what's new and install it live
 static void cmd_update(char *arg)
 {
-    if (arg && !strcmp(arg, "kernel")) {     // system-level: new kernel -> A/B slot
-        kupdate_install();
+    // system-level: new kernel -> A/B slot. "update kernel" lists what the
+    // server has, "update kernel <version>" picks one (downgrades allowed)
+    if (arg && !strcmp(arg, "kernel")) {
+        kupdate_list();
+        return;
+    }
+    if (arg && starts_with(arg, "kernel ") && arg[7]) {
+        kupdate_install(arg + 7);
         return;
     }
     term_puts("checking the update server...\n");

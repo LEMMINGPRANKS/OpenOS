@@ -21,9 +21,19 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 
 PKG_DIR = os.path.join(os.path.dirname(__file__), "..", "packages")
 UPD_DIR = os.path.join(PKG_DIR, "updates")
+KDIR = os.path.join(PKG_DIR, "kernel")
 COMMENTS = os.path.join(PKG_DIR, "comments.txt")
 ROADMAP = os.path.join(PKG_DIR, "roadmap.txt")
 VERSION = "1.4.0"
+
+
+def stable_version():
+    """The version the stable channel serves (packages/kernel/stable)."""
+    try:
+        with open(os.path.join(KDIR, "stable"), encoding="utf-8") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
 
 
 def send(self, body, kind):
@@ -115,6 +125,30 @@ class Handler(BaseHTTPRequestHandler):
                 return
             with open(path, "rb") as f:
                 send(self, f.read(), "text/html")
+            return
+        if name == "kernel/versions":
+            st = stable_version()
+            vers = []
+            try:
+                for f in sorted(os.listdir(KDIR)):
+                    if f.startswith("v") and os.path.isdir(os.path.join(KDIR, f)):
+                        vers.append(f[1:])
+            except OSError:
+                pass
+            body = "".join(
+                f"{v} {'stable' if v == st else 'unstable'}\n" for v in vers)
+            send(self, body.encode(), "text/plain")
+            return
+        # the classic single-kernel paths serve whatever the stable channel
+        # points at, so older OpenOS updaters keep working unchanged
+        if name in ("kernel/manifest.txt", "kernel/kernel.flat"):
+            st = stable_version()
+            if not st or not os.path.isfile(os.path.join(KDIR, "v" + st,
+                                                        name.split("/")[-1])):
+                not_found(self, "no stable kernel is set")
+                return
+            with open(os.path.join(KDIR, "v" + st, name.split("/")[-1]), "rb") as f:
+                send(self, f.read(), "application/octet-stream")
             return
         if name == "comments":
             send(self, render_list(COMMENTS, "Comments", "/comments",
