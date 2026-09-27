@@ -1,6 +1,6 @@
 #include "tcp.h"
 #include "net.h"
-#include "e1000.h"
+#include "nic.h"
 #include "timer.h"
 
 struct tcp_hdr {
@@ -16,6 +16,8 @@ struct tcp_hdr {
 #define RST 0x04
 #define PSH 0x08
 #define ACK 0x10
+
+#define RECV_WINDOW 4096                // what we advertise; also RST sanity range
 
 static uint32_t rem_ip;
 static uint16_t rem_port, loc_port;
@@ -69,7 +71,7 @@ static void tcp_send_seg(uint8_t flags, const uint8_t *data, uint32_t len)
     th.ack = htonl_(ack_num);
     th.doff = (20 / 4) << 4;
     th.flags = flags;
-    th.win = htons_(4096);
+    th.win = htons_(RECV_WINDOW);
     th.csum = 0;
     th.urg = 0;
     th.csum = htons_(tcp_checksum(&th, data, len));
@@ -79,23 +81,27 @@ static void tcp_send_seg(uint8_t flags, const uint8_t *data, uint32_t len)
 // wait for a segment matching our ports; fills header + data
 struct rxseg {
     struct tcp_hdr hdr;
-    uint8_t body[E1000_MTU];
+    uint8_t body[NIC_MTU];
     uint32_t body_len;
 };
 
+// signed distance between sequence numbers (they wrap at 2^32)
+static int32_t seq_diff(uint32_t a, uint32_t b) { return (int32_t)(a - b); }
+
 static int wait_seg(struct rxseg *out, uint32_t timeout_ms)
 {
-    static uint8_t buf[E1000_MTU];
+    static uint8_t buf[NIC_MTU];
     uint64_t start = timer_uptime_ms();
     for (;;) {
-        int n = net_ip_poll_tcp(buf, E1000_MTU, 0);
-        if (n >= 20) {
+        uint32_t src = 0;
+        int n = net_ip_poll_tcp(buf, NIC_MTU, &src, 0);
+        if (n >= 20 && src == rem_ip) {
             struct tcp_hdr *h = (struct tcp_hdr *)buf;
-            if (ntohs_(h->dport) == loc_port && ntohs_(h->sport) == rem_port) {
+            uint32_t doff = (uint32_t)(h->doff >> 4) * 4;
+            if (ntohs_(h->dport) == loc_port && ntohs_(h->sport) == rem_port &&
+                doff >= 20 && doff <= (uint32_t)n) {
                 out->hdr = *h;
-                uint32_t doff = (uint32_t)(h->doff >> 4) * 4;
                 uint32_t blen = (uint32_t)n - doff;
-                if (blen > E1000_MTU) blen = E1000_MTU;
                 for (uint32_t i = 0; i < blen; i++)
                     out->body[i] = buf[doff + i];
                 out->body_len = blen;
@@ -120,25 +126,29 @@ int tcp_connect(uint32_t ip, uint16_t port, uint32_t timeout_ms)
     peer_fin = 0;
 
     tcp_send_seg(SYN, 0, 0);
+    uint64_t start = timer_uptime_ms();
     for (;;) {
-        int n = wait_seg(&r, timeout_ms);
-        if (n < 0)
+        uint64_t used = timer_uptime_ms() - start;
+        if (used >= timeout_ms)
             return -1;
-        if (r.hdr.flags & (SYN | ACK)) {
+        if (wait_seg(&r, timeout_ms - (uint32_t)used) < 0)
+            return -1;
+        uint8_t f = r.hdr.flags;
+        // only a segment acknowledging OUR SYN belongs to this connection
+        int acks_syn = (f & ACK) && ntohl_(r.hdr.ack) == seq_num + 1;
+        if (f & RST) {
+            if (acks_syn)
+                return -2;               // refused: nothing listens there
+            continue;                    // stray reset from an old connection
+        }
+        if ((f & (SYN | ACK)) == (SYN | ACK) && acks_syn) {
             ack_num = ntohl_(r.hdr.seq) + 1;
             seq_num += 1;
             tcp_send_seg(ACK, 0, 0);
             connected = 1;
             return 0;
         }
-        if (r.hdr.flags & (SYN)) {       // SYN without ACK (weird but reply)
-            ack_num = ntohl_(r.hdr.seq) + 1;
-            seq_num += 1;
-            tcp_send_seg(SYN | ACK, 0, 0);
-            continue;
-        }
-        if (r.hdr.flags & RST)
-            return -2;
+        // anything else (a lone ACK, a stale SYN-ACK): not our handshake
     }
 }
 
@@ -151,6 +161,10 @@ int tcp_send(const uint8_t *data, uint32_t len)
     return 0;
 }
 
+// Segments are only taken in order: the next byte we expect is ack_num.
+// A resent segment (already have it) or one past a gap (lost the one
+// before it) is dropped and answered with our current ACK, which makes
+// the server resend from exactly where we are.
 int tcp_recv(uint8_t *buf, uint32_t max, uint32_t timeout_ms)
 {
     static struct rxseg r;
@@ -159,33 +173,41 @@ int tcp_recv(uint8_t *buf, uint32_t max, uint32_t timeout_ms)
     int n = wait_seg(&r, timeout_ms);
     if (n < 0)
         return -1;                       // timeout, still connected
+    uint32_t seq = ntohl_(r.hdr.seq);
+    int32_t off = seq_diff(ack_num, seq);   // bytes of this segment we have
     if (r.hdr.flags & RST) {
-        connected = 0;
-        return -2;
-    }
-    if (r.body_len) {
-        ack_num = ntohl_(r.hdr.seq) + r.body_len;
-        if (r.hdr.flags & FIN) {         // last data + goodbye in one segment
-            tcp_send_seg(FIN | ACK, 0, 0);
-            seq_num += 1;
+        if (off <= 0 && -off < RECV_WINDOW) { // in-window reset only
             connected = 0;
-            peer_fin = 1;
-        } else {
-            tcp_send_seg(ACK, 0, 0);
+            return -2;
         }
-        uint32_t len = r.body_len > max ? max : r.body_len;
-        for (uint32_t i = 0; i < len; i++)
-            buf[i] = r.body[i];
-        return (int)len;
+        return 0;
     }
-    if (r.hdr.flags & FIN) {             // bare FIN: server said goodbye
-        ack_num = ntohl_(r.hdr.seq) + 1;
-        tcp_send_seg(ACK, 0, 0);
+    if (!r.body_len && !(r.hdr.flags & FIN))
+        return 0;                        // bare ACK of what we sent
+    uint32_t have = off > 0 ? (uint32_t)off : 0;
+    if (off < 0 || (have >= r.body_len && !(r.hdr.flags & FIN))) {
+        tcp_send_seg(ACK, 0, 0);         // gap or pure duplicate
+        return 0;
+    }
+
+    uint32_t len = r.body_len - (have < r.body_len ? have : r.body_len);
+    if (len > max)
+        len = max;                       // rest isn't ACKed: server resends
+    for (uint32_t i = 0; i < len; i++)
+        buf[i] = r.body[have + i];
+    ack_num += len;
+
+    // the FIN comes after the segment's last byte: only when we took it all
+    if ((r.hdr.flags & FIN) && have + len == r.body_len) {
+        ack_num += 1;                    // FIN takes one sequence number
+        tcp_send_seg(FIN | ACK, 0, 0);
+        seq_num += 1;
         connected = 0;
         peer_fin = 1;
-        return -2;                       // closed
+        return len ? (int)len : -2;      // data first; next call says closed
     }
-    return 0;                            // bare ACK, no data
+    tcp_send_seg(ACK, 0, 0);
+    return (int)len;
 }
 
 void tcp_close(void)
@@ -195,6 +217,6 @@ void tcp_close(void)
     tcp_send_seg(FIN | ACK, 0, 0);
     seq_num += 1;
     connected = 0;
-    struct rxseg r;
+    static struct rxseg r;
     wait_seg(&r, 300);                   // swallow the final ACK
 }

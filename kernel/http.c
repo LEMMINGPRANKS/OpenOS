@@ -1,5 +1,6 @@
 #include "http.h"
 #include "net.h"
+#include "nic.h"
 #include "tcp.h"
 #include "dns.h"
 #include "term.h"
@@ -17,7 +18,6 @@ int http_set_server(uint32_t ip, uint16_t port)
 {
     server_ip = ip;
     server_port = port;
-    net_ready = 0;                         // re-resolve ARP for the new server
     return 0;
 }
 
@@ -29,10 +29,10 @@ int http_ensure_net(void)
     if (net_ready)
         return 0;
     if (!net_up()) {
-        term_puts("bringing up the network (e1000 + DHCP)...\n");
+        term_puts("bringing up the network (NIC + DHCP)...\n");
         int r = net_init();
         if (r == -1) {
-            term_puts("no network: e1000 card not found (is -device e1000 set?)\n");
+            term_puts("no network: no supported network card found\n");
             return -1;
         }
         if (r != 0) {
@@ -40,15 +40,15 @@ int http_ensure_net(void)
             return -1;
         }
     }
-    uint8_t gw[6];
-    if (net_arp(server_ip, gw) != 0) {
-        term_puts("ARP: server did not answer\n");
-        return -1;
-    }
+    // no ARP for the package server here: it only exists on QEMU user-net,
+    // and every other destination is reached (and ARPed) through the
+    // next hop when the first packet goes out
     net_ready = 1;
     char ipstr[16];
     net_ip_str(net_local_ip(), ipstr);
-    term_puts("network up: ip ");
+    term_puts("network up: ");
+    term_puts(nic_name());
+    term_puts(", ip ");
     term_puts(ipstr);
     term_putc('\n');
     return 0;

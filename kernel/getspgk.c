@@ -1,5 +1,7 @@
 #include "getspgk.h"
 #include "net.h"
+#include "nic.h"
+#include "dns.h"
 #include "http.h"
 #include "ramfs.h"
 #include "term.h"
@@ -58,7 +60,18 @@ void cmd_netinfo(void)
         return;
     char ipstr[16];
     net_ip_str(net_local_ip(), ipstr);
+    term_puts("nic     : ");
+    term_puts(nic_name());
+    term_putc('\n');
     term_puts("ip      : ");
+    term_puts(ipstr);
+    term_putc('\n');
+    net_ip_str(net_gateway(), ipstr);
+    term_puts("gateway : ");
+    term_puts(ipstr);
+    term_putc('\n');
+    net_ip_str(dns_server(), ipstr);
+    term_puts("dns     : ");
     term_puts(ipstr);
     term_putc('\n');
     const uint8_t *m = net_our_mac();

@@ -168,6 +168,19 @@ Never invent other naming schemes. New devices join these registers.
   the Internet app. Verified in QEMU end to end: example.com fetched
   over our own e1000+DHCP+DNS+TCP stack, comment + idea posted from
   the app and saved on the host, all tabs rendering.
+- **v1.4.2** (2026-09-27) — **DONE**: more network chips + network fixes.
+  kernel/nic.c: a NIC layer that probes every driver and routes frames to
+  the card found. Drivers: Intel e1000/e1000e (~50 IDs incl. 82574L and
+  I217/I218/I219; reset, link up, EEPROM MAC fallback), Realtek
+  RTL8169/8168/8111/8101, Realtek RTL8139. Fixes: no more ARP to 10.0.2.2
+  before every request (broke every non-QEMU network); DNS server taken
+  from DHCP option 6; DHCP uses option 54 as server id, checks xid + MAC,
+  full 312-byte options; TCP takes segments strictly in order (resends
+  and gaps answered with our ACK); handshake needs a SYN-ACK that ACKs
+  our SYN, RST|ACK = refused. Verified in QEMU on e1000, e1000e,
+  82545EM, 82544GC and rtl8139 (DHCP, DNS, fetch, 90 KB kernel update
+  byte-exact on disk). RTL8169 family + PCH Intel parts: untested (QEMU
+  has no model for them).
 - **next**: a search engine (BDFL's own idea, posted from the Ideas
   tab), bookmarks + history in the browser
 
@@ -216,7 +229,12 @@ kernel/internet.c/.h # The Internet app: browser/news/updates/comments/ideas tab
 kernel/version.h   # single OS_VERSION string used by every banner
 kernel/filemgr.c/.h # Files app: keyboard + mouse file browser
 kernel/pci.c/.h    # PCI config-space scan, BAR decode
-kernel/e1000.c/.h  # Intel e1000 NIC driver (polling, legacy descriptors)
+kernel/nic.c/.h    # NIC layer: probes the drivers below, routes frames to the one found
+kernel/e1000.c/.h  # Intel e1000/e1000e NIC driver (polling, legacy descriptors)
+kernel/e1000_ids.h # Intel device-ID table + per-chip quirks
+kernel/rtl8169.c/.h # Realtek RTL8169/8168/8111/8101 NIC driver (IO BAR, polling)
+kernel/rtl8139.c/.h # Realtek RTL8139 NIC driver (IO BAR, polling)
+kernel/portio.h    # inb/outb/inw/outw/inl/outl for the IO-BAR drivers
 kernel/net.c/.h    # ETH/ARP/IPv4/UDP + DHCP client
 kernel/tcp.c/.h    # minimal TCP client (connect/send/recv/close)
 kernel/getspgk.c/.h # getspgk command: package downloader

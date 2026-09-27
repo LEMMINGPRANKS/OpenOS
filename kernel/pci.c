@@ -57,14 +57,51 @@ int pci_find(uint16_t vendor, uint16_t device, uint8_t *bus, uint8_t *slot)
     return 0;
 }
 
+const struct pci_id *pci_find_table(const struct pci_id *ids,
+                                    uint8_t *bus, uint8_t *slot)
+{
+    for (uint32_t b = 0; b < 256; b++)
+        for (uint32_t s = 0; s < 32; s++) {
+            uint16_t v = pci_vendor((uint8_t)b, (uint8_t)s);
+            if (v == 0xFFFF)
+                continue;
+            uint16_t d = pci_device((uint8_t)b, (uint8_t)s);
+            for (const struct pci_id *id = ids; id->vendor; id++)
+                if (id->vendor == v && id->device == d) {
+                    *bus = (uint8_t)b;
+                    *slot = (uint8_t)s;
+                    return id;
+                }
+        }
+    return 0;
+}
+
+void pci_enable(uint8_t bus, uint8_t slot)
+{
+    // decode on + bus master (DMA). SeaBIOS usually sets decode already;
+    // real firmware often leaves bus mastering off for NICs it didn't use.
+    uint32_t cmd = pci_read32(bus, slot, 0, 4);
+    pci_write32(bus, slot, 0, 4, cmd | 0x7);
+}
+
 uint32_t pci_bar_mem(uint8_t bus, uint8_t slot, int barnum)
 {
-    // make sure memory decode is on (SeaBIOS usually sets it already)
-    uint32_t cmd = pci_read32(bus, slot, 0, 4);
-    pci_write32(bus, slot, 0, 4, cmd | 0x7);   // IO + memory + bus master
-
-    uint32_t raw = pci_read32(bus, slot, 0, (uint8_t)(0x10 + barnum * 4));
+    pci_enable(bus, slot);
+    uint8_t off = (uint8_t)(0x10 + barnum * 4);
+    uint32_t raw = pci_read32(bus, slot, 0, off);
     if (raw & 1)
         return 0;                       // IO BAR, not memory
-    return raw & 0xFFFFFFF0;            // 32-bit memory BAR
+    if ((raw & 0x6) == 0x4 && off + 4 <= 0x24 &&
+        pci_read32(bus, slot, 0, (uint8_t)(off + 4)) != 0)
+        return 0;                       // 64-bit BAR above 4 GiB: not mapped
+    return raw & 0xFFFFFFF0;            // below 4 GiB: identity-mapped
+}
+
+uint16_t pci_bar_io(uint8_t bus, uint8_t slot, int barnum)
+{
+    pci_enable(bus, slot);
+    uint32_t raw = pci_read32(bus, slot, 0, (uint8_t)(0x10 + barnum * 4));
+    if (!(raw & 1))
+        return 0;                       // memory BAR, not IO
+    return (uint16_t)(raw & 0xFFFC);
 }
