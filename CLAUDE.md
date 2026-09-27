@@ -152,8 +152,24 @@ Never invent other naming schemes. New devices join these registers.
   update incl. confirm (a staged-and-hung candidate rolls back on the
   next boot via the "booting" flag). Real pocketdev disk install is a
   LATER milestone with Robin (resize + backups first).
-- **next**: full from-scratch web browser (DNS -> HTTP -> HTML subset ->
-  WM window; Electron is impossible — it needs a host OS underneath)
+- **v1.4.1** (2026-09-27) — **DONE**: The Internet app + real DNS.
+  kernel/dns.c: from-scratch DNS resolver (A records, compression
+  pointers, 4-entry cache) over the UDP stack — default resolver
+  10.0.2.3, `dns_set_server()`. http.c gained `http_get_url`
+  (host[:port]/path, dotted-quad or DNS name — in QEMU user-net this
+  fetches REAL internet pages) + `http_post` (form POST). shell: `dns
+  <name>` + `fetch <url>`. kernel/internet.c: ONE Internet app (taskbar
+  Internet button replaces News/Browser/Update) with five tabs —
+  Browser (address bar, link clicks, download-installs), News, Updates
+  (the A/B update manager), Comments and Ideas (read + POST; server
+  saves to packages/comments.txt + roadmap.txt via new /comments +
+  /roadmap endpoints with do_POST). Tab key cycles tabs; tab bar is
+  clickable. APP_BROWSER/APP_NEWS/APP_UPDATE retired; .html files open
+  the Internet app. Verified in QEMU end to end: example.com fetched
+  over our own e1000+DHCP+DNS+TCP stack, comment + idea posted from
+  the app and saved on the host, all tabs rendering.
+- **next**: a search engine (BDFL's own idea, posted from the Ideas
+  tab), bookmarks + history in the browser
 
 ## Build & run
 
@@ -193,8 +209,10 @@ kernel/files.c/.h  # unified file index over ramfs + IR2
 kernel/path.c/.h   # path helpers: resolve, parent, basename
 kernel/js.c/.h     # OpenJS: JavaScript interpreter (lexer+parser+eval)
 kernel/browser.c/.h # HTML renderer (tag-aware text, colours, links)
-kernel/http.c/.h   # shared HTTP client (used by getspgk + news)
-kernel/news.c/.h   # News app: fetches /news and renders it
+kernel/http.c/.h   # shared HTTP client (get/post/get_url; used by getspgk + internet)
+kernel/news.c/.h   # headless news fetch (the Internet app News tab uses http directly)
+kernel/dns.c/.h    # DNS resolver (A records over UDP, cache)
+kernel/internet.c/.h # The Internet app: browser/news/updates/comments/ideas tabs
 kernel/version.h   # single OS_VERSION string used by every banner
 kernel/filemgr.c/.h # Files app: keyboard + mouse file browser
 kernel/pci.c/.h    # PCI config-space scan, BAR decode

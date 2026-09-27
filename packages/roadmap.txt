@@ -9,3 +9,4 @@ IDEA | a terminal app with colours and scrollback
 IDEA | bookmarks + history in the browser
 IDEA | a music player that beeps tunes through the PC speaker
 IDEA | multi-window Paint with copy + paste
+[2026-09-27 15:02] new search enginge
