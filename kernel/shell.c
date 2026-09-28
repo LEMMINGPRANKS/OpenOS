@@ -105,6 +105,29 @@ static void prompt(void)
     term_puts("> ");
 }
 
+static void cmd_mkdir(char *arg)
+{
+    if (!arg || !arg[0]) {
+        term_puts("mkdir: folder name?\n");
+        return;
+    }
+    char full[PATH_MAX];
+    path_resolve(cwd, arg, full);
+    int r = ramfs_mkdir(full);
+    if (r == 0) {
+        term_puts("DIR ");
+        term_puts(full);
+        term_puts(" created\n");
+        store_flush();                   // empty folders survive power-off
+    } else if (r == -2) {
+        term_puts("mkdir: a file already has that name\n");
+    } else if (r == -3) {
+        term_puts("mkdir: file table full\n");
+    } else {
+        term_puts("mkdir: bad name\n");
+    }
+}
+
 static void cmd_cd(char *arg)
 {
     char full[PATH_MAX];
@@ -133,6 +156,7 @@ static void cmd_help(void)
     term_puts("  echo <text>   say it back\n");
     term_puts("  ls            list this directory (colour-coded)\n");
     term_puts("  cd <dir>      change directory (cd .. goes up, cd goes home)\n");
+    term_puts("  mkdir <name>  make a folder\n");
     term_puts("  pwd           print the current directory\n");
     term_puts("  cat <file>    read a file (DR1 first, then IR2)\n");
     term_puts("  run <file.js> execute an OpenJS script\n");
@@ -486,6 +510,7 @@ void shell_execute(char *cmdline)
     else if (!strcmp(cmdline, "clear"))  term_clear();
     else if (!strcmp(cmdline, "reboot")) cmd_reboot();
     else if (!strcmp(cmdline, "cd"))     cmd_cd(arg);
+    else if (!strcmp(cmdline, "mkdir"))  cmd_mkdir(arg);
     else if (!strcmp(cmdline, "pwd"))    { term_puts(cwd); term_putc('\n'); }
     else if (!strcmp(cmdline, "ls")) {
         struct fileinfo fl[FILES_MAX];

@@ -114,6 +114,18 @@ static int load_from(int slave_disk)
             (table + (size_t)f * sizeof *e);
         if (!e->name[0] || e->sect == 0)
             continue;
+        int nl = 0;
+        while (e->name[nl] && nl < RAMFS_NAME_MAX)
+            nl++;
+        if (nl && e->name[nl - 1] == '/') {  // folder: restore as a dir
+            char dname[RAMFS_NAME_MAX];
+            for (int j = 0; j < nl - 1; j++)
+                dname[j] = e->name[j];
+            dname[nl - 1] = 0;
+            if (dname[0] && ramfs_mkdir(dname) == 0)
+                count++;
+            continue;
+        }
         uint8_t *buf = kmalloc(e->sect * 512);
         if (!buf)
             break;
@@ -174,7 +186,8 @@ static int flush_locked(void)
     for (int i = 0; ; i++) {
         const char *nm;
         uint32_t sz;
-        if (!ramfs_enum(i, &nm, &sz))
+        int rd;
+        if (!ramfs_enum(i, &nm, &sz, &rd))
             break;
         if (nfiles >= RAMFS_MAX_FILES)
             break;
@@ -203,13 +216,14 @@ static int flush_locked(void)
     for (int i = 0; i < nfiles; i++) {
         const char *nm;
         uint32_t sz;
-        if (!ramfs_enum(i, &nm, &sz))
+        int rd;
+        if (!ramfs_enum(i, &nm, &sz, &rd))
             break;
         uint32_t need = ((WMBG_HDR + sz) + 511) & ~(uint32_t)511;
         if (used + need > need_total)
             break;                      // store full: keep what fits
         uint32_t dsz = 0;
-        const char *data = ramfs_read(nm, &dsz);
+        const char *data = rd ? "" : ramfs_read(nm, &dsz);
         if (!data) {
             if (buf) kfree(buf);
             return -3;                  // -3: ramfs changed under us
@@ -225,8 +239,10 @@ static int flush_locked(void)
         struct store_entry *e = (struct store_entry *)
             (table + (size_t)count * sizeof *e);
         int k = 0;
-        for (; nm[k] && k < RAMFS_NAME_MAX - 1; k++)
+        for (; nm[k] && k < RAMFS_NAME_MAX - 2; k++)
             e->name[k] = nm[k];
+        if (rd && k < RAMFS_NAME_MAX - 2)
+            e->name[k++] = '/';         // trailing slash marks a folder
         e->name[k] = 0;
         e->lba = STORE_DATA_LBA + used / 512;
         e->size = dsz;

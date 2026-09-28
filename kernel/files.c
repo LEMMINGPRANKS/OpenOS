@@ -81,10 +81,12 @@ int files_list_dir(const char *dir, struct fileinfo *out, int max)
     int n = 0;
 
     // ramfs: names are full paths ("/docs/a.txt"); dirs are implicit
+    // or explicit (ramfs_mkdir), so empty folders list too
     for (int i = 0; ; i++) {
         const char *nm;
         uint32_t sz;
-        if (!ramfs_enum(i, &nm, &sz))
+        int rd;
+        if (!ramfs_enum(i, &nm, &sz, &rd))
             break;
         if (!starts_with(nm, rp))
             continue;
@@ -94,7 +96,7 @@ int files_list_dir(const char *dir, struct fileinfo *out, int max)
         int len = 0;
         while (rest[len] && rest[len] != '/')
             len++;
-        add_child(out, &n, max, rest, len, sz, FS_RAMFS, rest[len] == '/');
+        add_child(out, &n, max, rest, len, sz, FS_RAMFS, rd || rest[len] == '/');
     }
 
     // IR2: tar-relative names, dirs arrive both as entries and via files
@@ -128,8 +130,18 @@ int files_is_dir(const char *path)
     for (int i = 0; ; i++) {
         const char *nm;
         uint32_t sz;
-        if (!ramfs_enum(i, &nm, &sz))
+        int rd;
+        if (!ramfs_enum(i, &nm, &sz, &rd))
             break;
+        if (rd) {
+            int same = 1;
+            for (int j = 0; ; j++) {
+                if (nm[j] != path[j]) { same = 0; break; }
+                if (!path[j]) break;
+            }
+            if (same)
+                return 1;              // an explicit (maybe empty) folder
+        }
         if (starts_with(nm, rp) && path_len(nm) > path_len(rp))
             return 1;                  // something lives inside
     }
