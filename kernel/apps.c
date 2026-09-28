@@ -17,6 +17,7 @@
 #include "dlapp.h"
 #include "updapp.h"
 #include "appbar.h"
+#include "codeapp.h"
 
 // Apps are the things that can live inside a window. Each app gets
 // keyboard chars through app_input with the window's console.
@@ -121,6 +122,9 @@ int open_file_window(const char *path)
     app_set_arg(path);
     if (ends_with(path, ".js"))
         return wm_open(APP_RUNNER, 110, 80, OPEN_WIN_W, OPEN_WIN_H);
+    if (ends_with(path, ".cpp") || ends_with(path, ".hpp") ||
+        ends_with(path, ".h"))
+        return wm_open(APP_CODE, 110, 80, OPEN_WIN_W, OPEN_WIN_H);
     if (ends_with(path, ".html"))
         return wm_open(APP_INTERNET, 110, 80, OPEN_WIN_W, 424);
     if (ends_with(path, ".png"))
@@ -209,6 +213,8 @@ void app_open(enum app_id app, struct console *con)
         download_app_open(con);
     else if (app == APP_UPDATE)
         update_app_open(con);
+    else if (app == APP_CODE)
+        code_open(con);
 }
 
 void app_input(enum app_id app, struct console *con, char c)
@@ -231,6 +237,8 @@ void app_input(enum app_id app, struct console *con, char c)
         download_app_input(con, c);
     else if (app == APP_UPDATE)
         update_app_input(con, c);
+    else if (app == APP_CODE)
+        code_input(con, c);
     (void)con; (void)c;                // other apps take no keyboard input
 }
 
@@ -297,6 +305,7 @@ const char *app_name(enum app_id app)
     if (app == APP_MUSIC)     return "Music";
     if (app == APP_DOWNLOAD)  return "Download";
     if (app == APP_UPDATE)    return "Update";
+    if (app == APP_CODE)     return "Code";
     return "?";
 }
 
@@ -313,5 +322,6 @@ uint32_t app_accent(enum app_id app)
     if (app == APP_MUSIC)     return 0xD81B60;
     if (app == APP_DOWNLOAD)  return 0x00897B;
     if (app == APP_UPDATE)    return 0x43A047;
+    if (app == APP_CODE)     return 0x007ACC;
     return 0x616161;
 }

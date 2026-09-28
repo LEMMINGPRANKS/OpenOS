@@ -15,6 +15,7 @@ enum app_id {
     APP_MUSIC,
     APP_DOWNLOAD,
     APP_UPDATE,
+    APP_CODE,
     APP_COUNT
 };
 

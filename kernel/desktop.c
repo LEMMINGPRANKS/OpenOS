@@ -27,11 +27,39 @@ static uint32_t cursor_saved[CURSOR_W * CURSOR_H];
 static int cursor_shown;
 static int32_t last_mx, last_my;
 
+static int name_eq(const char *a, const char *b)
+{
+    for (int i = 0; ; i++) {
+        if (a[i] != b[i])
+            return 0;
+        if (!a[i])
+            return 1;
+    }
+}
+
 static void launch(enum app_id app)
 {
     if (app == APP_INTERNET)
         app_set_arg("");
     wm_open(app, 0, 0, gfx_width(), gfx_height());
+}
+
+// launch a downloaded-app target: "app:<Name>" opens that built-in app,
+// "file:/path" opens the file in whatever app fits it
+static int launch_target(const char *t)
+{
+    if (t[0] == 'a' && t[1] == 'p' && t[2] == 'p' && t[3] == ':') {
+        for (int id = 0; id < APP_COUNT; id++)
+            if (name_eq(app_name((enum app_id)id), t + 4)) {
+                launch((enum app_id)id);
+                return 1;
+            }
+        return 0;
+    }
+    if (t[0] == 'f' && t[1] == 'i' && t[2] == 'l' && t[3] == 'e' &&
+        t[4] == ':')
+        return open_file_window(t + 5) == 0;
+    return 0;
 }
 
 static void wallpaper(void)
@@ -123,9 +151,13 @@ void desktop_run(void)
         if (btn != prev_btn) {        // fresh press or release
             if ((btn & 1) && menu_open()) {
                 enum app_id picked = menu_pick(mx, my);
+                const char *target = menu_target();
                 if (picked != APP_COUNT) {
                     menu_hide();
                     launch(picked);
+                } else if (target[0]) {
+                    menu_hide();
+                    launch_target(target);
                 }
             } else if (btn & 1) {     // fresh press: windows first
                 cursor_hide();
@@ -158,8 +190,12 @@ void desktop_run(void)
                     menu_move(1);
                 } else if (c == '\n') {
                     enum app_id picked = menu_selected();
+                    const char *target = menu_target();
                     menu_hide();
-                    launch(picked);
+                    if (picked != APP_COUNT)
+                        launch(picked);
+                    else if (target[0])
+                        launch_target(target);
                 }
             } else {
                 cursor_hide();
