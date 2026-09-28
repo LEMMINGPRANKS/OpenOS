@@ -20,14 +20,11 @@
 #define WM_TEXT_BLUR   0x8A8A92
 #define WM_BORDER      0xD5D5DB
 #define WM_INSET       2              // body inset so rounding shows
-#define WM_MIN_VISIBLE 60
 
 static struct window wins[WM_MAX_WINDOWS];
 static int focus = -1;
 static uint8_t prev_left;
-static int drag_win = -1;
 static int ptr_win = -1;                   // pixel app owning the pointer
-static int drag_dx, drag_dy;
 static void (*repaint_all)(void);
 
 void wm_init(void (*repaint_cb)(void))
@@ -35,7 +32,6 @@ void wm_init(void (*repaint_cb)(void))
     for (int i = 0; i < WM_MAX_WINDOWS; i++)
         wins[i].used = 0;
     focus = -1;
-    drag_win = -1;
     prev_left = 0;
     repaint_all = repaint_cb;
 }
@@ -82,24 +78,28 @@ void wm_paint_all(void)
 
 int wm_open(enum app_id app, uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 {
+    // full screen by BDFL decree: no taskbar, so a window must fill the
+    // screen (exit button in the title bar is the way out)
+    (void)x; (void)y; (void)w; (void)h;
     int slot = -1;
     for (int i = 0; i < WM_MAX_WINDOWS; i++)
         if (!wins[i].used) { slot = i; break; }
     if (slot < 0)
         return -1;
-    struct console *con = term_open(x + WM_INSET, y + WM_TITLE_H,
-                                    w - 2 * WM_INSET,
-                                    h - WM_TITLE_H - WM_INSET);
+    uint32_t sw = gfx_width(), sh = gfx_height();
+    struct console *con = term_open(WM_INSET, WM_TITLE_H,
+                                    sw - 2 * WM_INSET,
+                                    sh - WM_TITLE_H - WM_INSET);
     if (!con)
         return -1;
     banner_play(app);                // Wii-style start splash
     wins[slot].used = 1;
     wins[slot].app = app;
     wins[slot].con = con;
-    wins[slot].x = x;
-    wins[slot].y = y;
-    wins[slot].w = w;
-    wins[slot].h = h;
+    wins[slot].x = 0;
+    wins[slot].y = 0;
+    wins[slot].w = sw;
+    wins[slot].h = sh;
     focus = slot;
     if (repaint_all)
         repaint_all();               // chrome first, then app output on top
@@ -205,29 +205,6 @@ void wm_key(char c)
 int wm_mouse(int mx, int my, uint8_t buttons)
 {
     int left = buttons & 1;
-    int32_t sw = (int32_t)gfx_width();
-    int32_t sh = (int32_t)gfx_height();
-
-    if (drag_win >= 0) {              // mid-drag
-        if (!left) {
-            drag_win = -1;
-        } else {
-            struct window *w = &wins[drag_win];
-            int nx = mx - drag_dx;
-            int ny = my - drag_dy;
-            if (nx < 0) nx = 0;
-            if (nx > sw - WM_MIN_VISIBLE) nx = sw - WM_MIN_VISIBLE;
-            if (ny < 0) ny = 0;
-            if (ny > sh - WM_TITLE_H - 1) ny = sh - WM_TITLE_H - 1;
-            w->x = (uint32_t)nx;
-            w->y = (uint32_t)ny;
-            term_move(w->con, w->x, w->y + WM_TITLE_H);
-            if (repaint_all)
-                repaint_all();
-        }
-        prev_left = (uint8_t)left;
-        return 1;                     // a window owns the pointer mid-drag
-    }
 
     if (left && !prev_left) {         // fresh press
         int hit = window_at(mx, my);
@@ -246,21 +223,19 @@ int wm_mouse(int mx, int my, uint8_t buttons)
                     if (repaint_all)
                         repaint_all();
                 }
-                if (my < (int)(w->y + WM_TITLE_H)) {  // grab the title bar
-                    drag_win = hit;
-                    drag_dx = mx - (int)w->x;
-                    drag_dy = my - (int)w->y;
-                } else if (app_wants_pixels(w->app)) {
-                    ptr_win = hit;     // pixel app: press/drag/release
-                    app_pointer(w->app, w->con, mx, my, 1);
-                } else {              // click inside the app body
-                    static uint64_t last_ms;
-                    static int last_win = -1;
-                    uint64_t now = timer_uptime_ms();
-                    int dbl = hit == last_win && now - last_ms < 400;
-                    last_ms = now;
-                    last_win = hit;
-                    app_click(w->app, w->con, mx, my, dbl);
+                if (my >= (int)(w->y + WM_TITLE_H)) {  // inside the app body
+                    if (app_wants_pixels(w->app)) {
+                        ptr_win = hit; // pixel app: press/drag/release
+                        app_pointer(w->app, w->con, mx, my, 1);
+                    } else {
+                        static uint64_t last_ms;
+                        static int last_win = -1;
+                        uint64_t now = timer_uptime_ms();
+                        int dbl = hit == last_win && now - last_ms < 400;
+                        last_ms = now;
+                        last_win = hit;
+                        app_click(w->app, w->con, mx, my, dbl);
+                    }
                 }
             }
             prev_left = (uint8_t)left;
