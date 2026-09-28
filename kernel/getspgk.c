@@ -135,6 +135,8 @@ void cmd_getspgk(const char *arg)
         term_puts("usage: getspgk install <package>\n");
         return;
     }
+    // server URL is always /<pkg>; .app manifests are SOFTWARE and
+    // install into /apps/ locally so menu page 2 finds them
     char path[64];
     char *p = path;
     const char *s = "/";
@@ -142,6 +144,22 @@ void cmd_getspgk(const char *arg)
     s = pkg;
     while (*s) *p++ = *s++;
     *p = 0;
+    int plen = 0;
+    while (pkg[plen])
+        plen++;
+    int is_app = plen >= 4 && pkg[plen - 4] == '.' && pkg[plen - 3] == 'a' &&
+                 pkg[plen - 2] == 'p' && pkg[plen - 1] == 'p';
+    char local[64];
+    char *l = local;
+    if (is_app) {
+        const char *a = "/apps/";
+        while (*a) *l++ = *a++;
+    } else {
+        *l++ = '/';
+    }
+    s = pkg;
+    while (*s) *l++ = *s++;
+    *l = 0;
     term_puts("downloading ");
     term_puts(pkg);
     term_puts("...\n");
@@ -156,8 +174,8 @@ void cmd_getspgk(const char *arg)
         term_puts("getspgk: download failed\n");
         return;
     }
-    // save into ramfs at /<pkg> (absolute path, pkg keeps its extension)
-    if (ramfs_write(path, (const char *)body, (uint32_t)n) != 0) {
+    // save into ramfs at the local install path
+    if (ramfs_write(local, (const char *)body, (uint32_t)n) != 0) {
         term_puts("getspgk: ramfs full\n");
         return;
     }
@@ -165,7 +183,12 @@ void cmd_getspgk(const char *arg)
     term_puts(pkg);
     term_puts(" (");
     print_dec((uint32_t)n);
-    term_puts(" bytes) into ramfs -- try: cat ");
-    term_puts(pkg);
-    term_putc('\n');
+    term_puts(" bytes)");
+    if (is_app)
+        term_puts(" -- it's on menu page 2 now!\n");
+    else {
+        term_puts(" into ramfs -- try: cat ");
+        term_puts(pkg);
+        term_putc('\n');
+    }
 }
