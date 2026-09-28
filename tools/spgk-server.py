@@ -79,12 +79,20 @@ def esc(s):
             .replace(">", "&gt;").replace('"', "&quot;").replace("'", "&#39;"))
 
 
+def _fetch_json(url, timeout):
+    # wikipedia 403s requests without a User-Agent, so we always send one
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "OpenOS/1.6 (Freddie's from-scratch OS; contact via the "
+                      "OpenOS Internet app comments tab)"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.load(r)
+
+
 def _ddg_part(q):
     try:
         url = "https://api.duckduckgo.com/?" + urllib.parse.urlencode(
             {"q": q, "format": "json", "no_html": "1", "skip_disambig": "1"})
-        with urllib.request.urlopen(url, timeout=4) as r:
-            data = json.load(r)
+        data = _fetch_json(url, 4)
     except Exception as e:
         return f"<p>(duckduckgo did not answer: {esc(e)})</p>", 0
     out, hits = [], 0
@@ -113,8 +121,7 @@ def _wiki_part(q):
     try:
         url = ("https://en.wikipedia.org/w/api.php?" + urllib.parse.urlencode(
             {"action": "opensearch", "search": q, "limit": "5", "format": "json"}))
-        with urllib.request.urlopen(url, timeout=4) as r:
-            j = json.load(r)
+        j = _fetch_json(url, 4)
     except Exception as e:
         return f"<p>(wikipedia did not answer: {esc(e)})</p>", 0
     if not (len(j) == 4 and j[1]):
@@ -126,9 +133,16 @@ def _wiki_part(q):
     return "".join(out), len(j[1])
 
 
+_search_cache = {}          # q -> html bytes; repeated searches answer instantly
+_SEARCH_CACHE_MAX = 32
+
+
 def web_search(q):
     """The OpenOS search engine: DuckDuckGo instant answers + Wikipedia,
     fetched in parallel so OpenOS never waits twice."""
+    cached = _search_cache.get(q)
+    if cached is not None:
+        return cached
     import concurrent.futures
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
         f1 = ex.submit(_ddg_part, q)
@@ -140,7 +154,11 @@ def web_search(q):
     if not (dhits + whits):
         parts.append("<p>no results. try different words?</p>")
     parts.append("<p><a href='/news'>back to OpenOS news</a></p></body></html>")
-    return "".join(parts).encode()
+    out = "".join(parts).encode()
+    if len(_search_cache) >= _SEARCH_CACHE_MAX:
+        _search_cache.pop(next(iter(_search_cache)))
+    _search_cache[q] = out
+    return out
 
 
 class Handler(BaseHTTPRequestHandler):
