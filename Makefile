@@ -15,7 +15,8 @@ OBJS = obj/boot.o obj/isr.o obj/term.o obj/idt.o obj/timer.o \
        obj/filemgr.o obj/pci.o obj/nic.o obj/e1000.o obj/rtl8139.o obj/rtl8169.o obj/net.o obj/tcp.o \
        obj/getspgk.o obj/http.o obj/news.o obj/desktop.o obj/kmain.o obj/ata.o obj/tar.o obj/store.o \
        obj/png.o obj/paint.o obj/kupdate.o obj/part.o obj/dns.o obj/internet.o obj/settings.o obj/marks.o \
-       obj/menu.o obj/banner.o obj/music.o obj/dlapp.o obj/updapp.o obj/appbar.o
+       obj/menu.o obj/banner.o obj/music.o obj/dlapp.o obj/updapp.o obj/appbar.o \
+       obj/gpu.o obj/nv.o
 
 all: openos.iso
 

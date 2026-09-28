@@ -12,6 +12,7 @@
 #include "store.h"
 #include "part.h"
 #include "kupdate.h"
+#include "gpu.h"
 #include "version.h"
 
 #define MB2_BOOT_MAGIC 0x36D76289
@@ -35,9 +36,13 @@ void kmain(unsigned long magic, unsigned long addr)
     mouse_init();                       // and a mouse (IRQ12)
     ata_init();                         // DR1: the main drive, if there is one
     part_scan();                        // find our partition on each disk
+    gpu_probe();                        // the NVIDIA detective takes the case
 
     term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
     term_puts("\n   OpenOS " OS_VERSION "\n");
+    term_puts("   gpu: ");
+    term_puts(gpu_ident());
+    term_putc('\n');
     term_puts("   booting to desktop...\n\n");
     term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
 

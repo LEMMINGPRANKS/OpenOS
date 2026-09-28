@@ -7,6 +7,7 @@
 #include "apps.h"
 #include "menu.h"
 #include "shell.h"
+#include "gpu.h"
 #include "version.h"
 
 // The desktop OpenOS boots into: light grey-on-white wallpaper and the
@@ -45,6 +46,7 @@ static void wallpaper(void)
     }
     gfx_text_fg(28, 26, "OpenOS", COL_WORDMARK);
     gfx_text_fg(28, 26 + FONT_H + 4, OS_VERSION, COL_WORDMARK);
+    gfx_text_fg(28, 26 + 2 * FONT_H + 8, gpu_ident(), COL_WORDMARK);
 }
 
 void desktop_repaint(void)

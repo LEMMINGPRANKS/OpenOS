@@ -258,6 +258,24 @@ Never invent other naming schemes. New devices join these registers.
   first. Shell gained `files`, `music`, `download` window commands.
   Verified headless in QEMU end to end, including a real package
   install and the kernel version list over the network.
+- **v1.6.1** (2026-09-28) — **DONE**: Part 2 — full-screen windows. wm_open
+  ignores geometry (BDFL decree: no taskbar, so windows fill the screen and
+  the title-bar exit button is the way out); drag support removed; taskbar
+  deleted (Apps button, window pills, clock) — the Wii rule is the whole
+  navigation now. Verified in QEMU.
+- **v1.6.2** (2026-09-28) — **DONE**: Part 3 — the GPU layer + NVIDIA
+  detective. kernel/gpu.c (device-independent interface: probe/ident today,
+  accelerated backends later) + kernel/nv.c (read-only PCI detective for any
+  NVIDIA display card: id table for MCP89/RTX 3060/3070/3080/4090, BAR size
+  probes, BOOT0 family read when BAR0 is under the 4 GiB identity map —
+  coldrivers trick). `gpuinfo` command + gpu name in the boot banner and
+  desktop wordmark. QEMU shows the honest software-backend fallback.
+  Real-machine verification (Air = 320M, freddiespc = 3070) pending USB
+  stick boots. Plan: parts 4-7 = MCP89 deep dive (nv50-tables init),
+  accelerated 2D + RTX groundwork, 3D engine in the HTML engine
+  (<canvas> + OpenJS arrays/onFrame + fixed-point r3d rasterizer — no
+  SSE in this kernel by design), then Circuitstorm for OpenOS on his
+  real tracks/*.json. Plan file: ~/.claude/plans/gentle-yawning-flurry.md.
 - **next**: a terminal app with colours and scrollback; a music player
   that beeps tunes through the PC speaker
 
