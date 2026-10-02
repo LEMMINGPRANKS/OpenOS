@@ -12,5 +12,8 @@ const char *gpu_ident(void);    // card name, or the software-backend line
 void gpu_info(void);            // the gpuinfo command body
 void gpu_regs(void);            // live register dump (read-only)
 void gpu_boot_log(void);        // one compact boot-log line (-> serial)
+int  gpu_display_init(void);    // own scanout + hw cursor (Curie); 0 = software
+int  gpu_hw_cursor(void);       // 1 = the GPU draws the cursor itself
+void gpu_cursor_move(int x, int y); // route desktop cursor updates to the card
 
 #endif

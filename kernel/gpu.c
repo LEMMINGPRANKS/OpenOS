@@ -1,6 +1,9 @@
 #include "gpu.h"
 #include "nv.h"
 #include "nvregs.h"
+#include "curie.h"
+#include "vram.h"
+#include "gfx.h"
 #include "term.h"
 
 static void hex32(uint32_t v)
@@ -110,4 +113,43 @@ void gpu_boot_log(void)
         hex32(nv_rd32(NV50_PDISPLAY_CRTC_CLK_CTRL(0)));
     }
     term_putc('\n');
+}
+
+// --- the display engine (1.7 part 3) --------------------------------------
+// Curie cards: full ownership. Allocate a framebuffer of OUR OWN in VRAM,
+// copy the firmware's picture into it, flip the CRTC onto it, then bring up
+// the hardware cursor. nv50+ cards wait for EVO channels (part 4).
+
+static int scanout_owned;
+static int hw_cursor;
+
+int gpu_display_init(void)
+{
+    if (!curie_display_init())
+        return 0;
+    uint32_t span = vram_fb_span();
+    uint64_t va = vram_alloc(span + 2047);
+    if (!va)
+        return 0;
+    va = (va + 2047) & ~(uint64_t)2047;
+    const volatile uint8_t *src = (const volatile uint8_t *)gfx_fb_addr();
+    volatile uint8_t *dst = (volatile uint8_t *)va;
+    for (uint32_t i = 0; i < span; i++)
+        dst[i] = src[i];                       // the picture rides across
+    if (!curie_flip((uint32_t)(va - nv_bar1())))
+        return 0;
+    gfx_remap_fb(va);
+    scanout_owned = 1;
+    hw_cursor = curie_cursor_init();
+    return 1;
+}
+
+int gpu_hw_cursor(void)
+{
+    return hw_cursor;
+}
+
+void gpu_cursor_move(int x, int y)
+{
+    curie_cursor_move(x, y);
 }

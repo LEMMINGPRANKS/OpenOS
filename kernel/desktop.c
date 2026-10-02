@@ -91,6 +91,10 @@ static void cursor_hide(void)
 {
     if (!cursor_shown)
         return;
+    if (gpu_hw_cursor()) {
+        cursor_shown = 0;
+        return;
+    }
     for (int r = 0; r < CURSOR_H; r++)
         for (int c = 0; c < CURSOR_W; c++)
             gfx_write_pixel((uint32_t)(last_mx + c), (uint32_t)(last_my + r),
@@ -100,6 +104,11 @@ static void cursor_hide(void)
 
 static void cursor_show(int32_t x, int32_t y)
 {
+    if (gpu_hw_cursor()) {
+        gpu_cursor_move(x, y);
+        cursor_shown = 1;
+        return;
+    }
     if (x + CURSOR_W >= (int32_t)gfx_width())
         x = (int32_t)gfx_width() - CURSOR_W;
     if (y + CURSOR_H >= (int32_t)gfx_height())

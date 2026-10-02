@@ -10,6 +10,7 @@
 int      vram_init(void);          // call once after gpu_probe + gfx_init
 int      vram_taken_over(void);    // 1 = gfx draws through the aperture
 uint64_t vram_alloc(uint32_t bytes); // kernel VA from the top of VRAM, 0 = full
+uint32_t vram_fb_span(void);       // framebuffer byte size inside the aperture
 void     vram_info(void);          // the gpuvram command body
 
 #endif

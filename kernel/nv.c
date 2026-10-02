@@ -46,6 +46,20 @@ void nv_wr32(uint32_t reg, uint32_t v)
     *(volatile uint32_t *)(uint64_t)(bar0 + reg) = v;
 }
 
+uint8_t nv_rd8(uint32_t reg)
+{
+    if (!boot0_ok)
+        return 0;
+    return *(volatile uint8_t *)(uint64_t)(bar0 + reg);
+}
+
+void nv_wr8(uint32_t reg, uint8_t v)
+{
+    if (!boot0_ok)
+        return;
+    *(volatile uint8_t *)(uint64_t)(bar0 + reg) = v;
+}
+
 const char *nv_ident(void)
 {
     return found ? idstr : "no NVIDIA card";

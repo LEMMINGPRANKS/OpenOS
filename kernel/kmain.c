@@ -47,6 +47,8 @@ void kmain(unsigned long magic, unsigned long addr)
     gpu_boot_log();
     if (vram_init()) {
         term_puts("   gpu vram: aperture OWNED -- drawing through BAR1\n");
+        if (gpu_display_init())
+            term_puts("   gpu: scanout OWNED, hardware cursor live\n");
     }
     term_puts("   booting to desktop...\n\n");
     term_setcolor(TERM_COLOR_WHITE_ON_BLUE);

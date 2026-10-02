@@ -22,5 +22,7 @@ uint32_t nv_bar_size(int bar);  // decoded size of BAR0/BAR1 (0 = absent)
 // dropped when BAR0 isn't reachable under the identity map.
 uint32_t nv_rd32(uint32_t reg);
 void     nv_wr32(uint32_t reg, uint32_t v);
+uint8_t  nv_rd8(uint32_t reg);
+void     nv_wr8(uint32_t reg, uint8_t v);
 
 #endif

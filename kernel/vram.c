@@ -68,6 +68,7 @@ uint64_t vram_alloc(uint32_t bytes)
 }
 
 int vram_taken_over(void) { return took_over; }
+uint32_t vram_fb_span(void) { return fb_span; }
 
 // The gpuvram command body
 void vram_info(void)
