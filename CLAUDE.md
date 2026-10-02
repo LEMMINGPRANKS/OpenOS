@@ -315,9 +315,26 @@ Never invent other naming schemes. New devices join these registers.
   term_clear() returns to live. Colours already lived in the 1.6.0 dual
   ink/paper palettes, so "colours + scrollback" is complete. Verified by
   Freddie's own eyeballs in the QEMU window.
-- **next (1.7)**: part 3 — the display engine: own scanout (gpu_fb flip) +
-  hardware cursor (64x64 ARGB image straight into VRAM); also still on the
-  list: a music player that beeps tunes through the PC speaker
+- **v1.7.3** (2026-10-02) — **DONE**: Part 3 of the 1.7 GPU arc — the
+  display engine. kernel/curie.c: the Curie-family (pre-nv50) display
+  engine, direct MMIO, every offset verified against nouveau's dispnv04
+  (linux-7.2.4). curie_display_init() finds which CRTC scans out our
+  framebuffer (read-only detect); gpu_display_init() copies the picture
+  into a 2048-aligned VRAM buffer of OUR OWN, flips NV_PCRTC_START onto
+  it (curie_flip) and remaps gfx — the desktop never blinks, but scanout
+  now walks memory we allocate. The crown jewel: the hardware cursor —
+  64x64 ARGB image in VRAM, programmed through the VGA-indexed CIO addr
+  regs + NV_PCRTC_CURSOR_CONFIG + the position-poke quirk (CIO writes
+  need a CU_START_POS nudge to take). desktop.c routes cursor moves
+  straight to the card when gpu_hw_cursor() — the software sprite's
+  save/restore is retired on Curie. nv50+ cards are honestly turned away
+  (EVO channels need PFIFO = part 4). Verified in QEMU: 1.7.3 boots,
+  software path unchanged; real-metal scanout+cursor = the USB-boot
+  milestone on the A1186 tower (its GeForce is Curie — exactly this path).
+- **next (1.7)**: part 4 — PFIFO channels + nv50-tables Stage-5 ctxprog
+  emitter -> first hardware 2D fill (class 502D) + `gpu bench`; also
+  still on the list: a music player that beeps tunes through the PC
+  speaker
 
 ## Build & run
 
