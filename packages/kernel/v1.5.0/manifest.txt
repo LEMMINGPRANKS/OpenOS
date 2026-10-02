@@ -1,0 +1,4 @@
+version=1.5.0
+size=111296
+entry=48
+bss=5050368
