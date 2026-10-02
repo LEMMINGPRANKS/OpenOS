@@ -26,7 +26,16 @@ UPD_DIR = os.path.join(PKG_DIR, "updates")
 KDIR = os.path.join(PKG_DIR, "kernel")
 COMMENTS = os.path.join(PKG_DIR, "comments.txt")
 ROADMAP = os.path.join(PKG_DIR, "roadmap.txt")
-VERSION = "1.5.0"
+VERSION = "unknown"
+try:
+    with open(os.path.join(os.path.dirname(__file__), "..", "kernel", "version.h"),
+              encoding="utf-8") as _f:
+        for _line in _f:
+            if _line.startswith("#define OS_VERSION"):
+                VERSION = _line.split('"')[1]
+                break
+except OSError:
+    pass
 
 
 def stable_version():
