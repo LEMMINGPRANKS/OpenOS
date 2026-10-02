@@ -86,9 +86,14 @@ void gpu_regs(void)
     reg_line("PMC_ENABLE    ", NV_PMC_ENABLE);
     reg_line("PFIFO_INTR    ", NV_PFIFO_INTR);
     reg_line("PFIFO_INTR_EN ", NV_PFIFO_INTR_EN);
-    reg_line("CRTC0_CLK_CTRL", NV50_PDISPLAY_CRTC_CLK_CTRL(0));
-    reg_line("CRTC1_CLK_CTRL", NV50_PDISPLAY_CRTC_CLK_CTRL(1));
-    reg_line("SOR0_SLINK    ", NV50_PDISPLAY_OUT_SLINK(0));
+    // The 0x610xxx PDISPLAY block is nv50+ only (Tesla and later). Older
+    // families (Curie, e.g. the 7300 GT) use the legacy CRTC elsewhere --
+    // reading these there would print garbage dressed up as data.
+    if (((nv_family() >> 20) & 0x1FF) >= 0x50) {
+        reg_line("CRTC0_CLK_CTRL", NV50_PDISPLAY_CRTC_CLK_CTRL(0));
+        reg_line("CRTC1_CLK_CTRL", NV50_PDISPLAY_CRTC_CLK_CTRL(1));
+        reg_line("SOR0_SLINK    ", NV50_PDISPLAY_OUT_SLINK(0));
+    }
 }
 
 // One compact line for the boot log (mirrors to COM1 serial automatically)
@@ -100,7 +105,9 @@ void gpu_boot_log(void)
     hex32(nv_rd32(NV_PMC_BOOT_0));
     term_puts(" PMC_EN ");
     hex32(nv_rd32(NV_PMC_ENABLE));
-    term_puts(" CRTC0 ");
-    hex32(nv_rd32(NV50_PDISPLAY_CRTC_CLK_CTRL(0)));
+    if (((nv_family() >> 20) & 0x1FF) >= 0x50) {
+        term_puts(" CRTC0 ");
+        hex32(nv_rd32(NV50_PDISPLAY_CRTC_CLK_CTRL(0)));
+    }
     term_putc('\n');
 }
