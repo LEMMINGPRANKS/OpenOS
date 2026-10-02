@@ -21,9 +21,16 @@ void term_view(const struct console *con, uint32_t *x, uint32_t *y,
                uint32_t *w, uint32_t *h);                       // pixel viewport
 int term_goto(struct console *con, int col, int row);  // move the write cursor
 uint16_t term_cols(struct console *con);
+uint16_t term_visible_rows(struct console *con); // text rows below the appbar
 void term_pos(struct console *con, int *col, int *row);
 int term_locate(struct console *con, int mx, int my, int *col, int *row);
 void term_protect(struct console *con, int rows);  // pixel-toolbar rows
+
+// scrollback: +lines = back in time, -lines = forward to live
+void term_scroll_by(struct console *con, int lines);
+void term_scroll_home(struct console *con); // jump to the oldest line
+void term_scroll_end(struct console *con);  // back to the live prompt
+uint16_t term_scroll_view(const struct console *con); // lines back (0 = live)
 
 void term_putc(char c);
 void term_puts(const char *s);

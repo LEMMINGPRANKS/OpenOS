@@ -12,5 +12,12 @@ int kb_haschar(void);
 #define KEY_DOWN  2
 #define KEY_LEFT  3
 #define KEY_RIGHT 4
+// shift variants for the terminal scrollback (E0 + shift)
+#define KEY_SUP    5   // shift+up:   one line back
+#define KEY_SDOWN  6   // shift+down: one line forward
+#define KEY_SPGUP  7   // shift+pgup: half a page back
+#define KEY_SPGDN  8   // shift+pgdn: half a page forward
+#define KEY_SHOME  9   // shift+home: jump to the top
+#define KEY_SEND  10   // shift+end:  back to live
 
 #endif

@@ -1,0 +1,4 @@
+version=1.7.2
+size=139960
+entry=48
+bss=5107712

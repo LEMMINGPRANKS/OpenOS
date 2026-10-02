@@ -45,10 +45,14 @@ void kb_on_scancode(uint8_t sc)
         extended = 0;
         if (sc & 0x80)
             return;                    // key release
-        if (sc == 0x48) push(KEY_UP);
-        else if (sc == 0x50) push(KEY_DOWN);
+        if (sc == 0x48) push(shift ? KEY_SUP : KEY_UP);
+        else if (sc == 0x50) push(shift ? KEY_SDOWN : KEY_DOWN);
         else if (sc == 0x4B) push(KEY_LEFT);
         else if (sc == 0x4D) push(KEY_RIGHT);
+        else if (sc == 0x49 && shift) push(KEY_SPGUP);   // pgup
+        else if (sc == 0x51 && shift) push(KEY_SPGDN);   // pgdn
+        else if (sc == 0x47 && shift) push(KEY_SHOME);   // home
+        else if (sc == 0x4F && shift) push(KEY_SEND);    // end
         return;
     }
     if (sc == 0x2A || sc == 0x36) { shift = 1; return; }

@@ -168,6 +168,7 @@ static void cmd_help(void)
     term_puts("  netinfo       show network info (ip, mac)\n");
     term_puts("  gpuinfo       show the GPU the detective found + live registers\n");
     term_puts("  gpuvram       VRAM aperture ownership report\n");
+    term_puts("  (Shift+PgUp/PgDn/Up/Down scroll the terminal; Shift+Home/End jump)\n");
     term_puts("  dns <name>    look up a name (try: dns example.com)\n");
     term_puts("  fetch <url>   download a page (try: fetch example.com/)\n");
     term_puts("  news          the News, in a window\n");
@@ -723,11 +724,54 @@ void shell_app_open(struct console *con)
     prompt();
 }
 
+// Scrollback keys are the terminal's, not the line editor's. While scrolled,
+// the appbar says where you are; any typing snaps back to the live prompt.
+static void scroll_appbar(struct console *con)
+{
+    if (!con)
+        return;
+    uint16_t v = term_scroll_view(con);
+    if (!v) {
+        appbar_paint(con, "Shell", OS_VERSION, 0x546E7A);
+        return;
+    }
+    char txt[40];
+    char *p = txt;
+    const char *s = "^ ";
+    while (*s) *p++ = *s++;
+    // decimal of v, then " lines up"
+    char digits[6];
+    int n = 0;
+    if (!v) digits[n++] = '0';
+    while (v) { digits[n++] = (char)('0' + v % 10); v /= 10; }
+    while (n) *p++ = digits[--n];
+    s = " lines up";
+    while (*s) *p++ = *s++;
+    *p = 0;
+    appbar_paint(con, "Shell", txt, 0x546E7A);
+}
+
 void shell_app_input(struct console *con, char c)
 {
     struct shell_state *st = state_for(con);
     if (con)
         term_use(con);
+    // terminal navigation first
+    if (con && c >= KEY_SUP && c <= KEY_SEND) {
+        int halfpage = (int)(term_visible_rows(con) / 2);
+        if (c == KEY_SUP) term_scroll_by(con, 1);
+        else if (c == KEY_SDOWN) term_scroll_by(con, -1);
+        else if (c == KEY_SPGUP) term_scroll_by(con, halfpage);
+        else if (c == KEY_SPGDN) term_scroll_by(con, -halfpage);
+        else if (c == KEY_SHOME) term_scroll_home(con);
+        else term_scroll_end(con);
+        scroll_appbar(con);
+        return;
+    }
+    if (con && c && term_scroll_view(con)) {
+        term_scroll_end(con);           // typing = back to the live prompt
+        scroll_appbar(con);
+    }
     if (c == '\n') {
         term_putc('\n');
         st->line[st->n] = 0;

@@ -25,6 +25,13 @@ static const uint32_t paper_pal[16] = {
     0xF4F4F7, 0xF4F4F7, 0xF4F4F7, 0xFFFFFF,
 };
 
+// Scrollback: every line that scrolls off the top is kept in a per-console
+// ring (SB_LINES lines). The screen can then be scrolled back through
+// history like a real terminal -- history lines + live rows are one virtual
+// buffer. 256 lines costs ~88 KiB per console; if the heap can't pay,
+// scrollback silently doesn't exist for that console and all else is normal.
+#define SB_LINES 256
+
 struct console {
     uint32_t vx, vy, vw, vh;            // pixel viewport
     uint16_t rows, cols;
@@ -32,6 +39,10 @@ struct console {
     uint16_t protect;                   // top rows owned by pixel toolbars
     uint8_t color;                      // vga attr for new writes
     uint8_t *cells;                     // rows*cols*2: char, vga color
+    uint8_t *hist;                      // SB_LINES*cols*2 ring, or 0
+    uint16_t hcount;                    // lines in the ring (<= SB_LINES)
+    uint16_t hhead;                     // next ring line to overwrite
+    uint16_t sbview;                    // lines scrolled back (0 = live)
 };
 
 static struct console *active;
@@ -93,18 +104,51 @@ static uint8_t *cell(struct console *c, uint16_t r, uint16_t col)
 
 static void render_cell(struct console *c, uint16_t r, uint16_t col)
 {
+    if (c->sbview)
+        return;                         // scrolled back: screen shows history
     uint8_t *p = cell(c, r, col);
     gfx_char(c->vx + col * FONT_W, c->vy + r * FONT_H, (char)p[0],
              ink_pal[p[1] & 0xF], paper_pal[(p[1] >> 4) & 0xF]);
+}
+
+// The virtual line at index v: 0..hcount-1 = history (oldest first),
+// then the live rows from `protect` down. Returns NULL if v is live.
+static const uint8_t *virt_line(const struct console *c, uint32_t v)
+{
+    if (c->hist && v < c->hcount) {
+        uint32_t line = ((uint32_t)c->hhead + SB_LINES - c->hcount + v)
+                        % SB_LINES;
+        return c->hist + line * c->cols * 2;
+    }
+    return 0;
 }
 
 void term_render(struct console *c)
 {
     if (!c)
         return;
-    for (uint16_t r = c->protect; r < c->rows; r++)
-        for (uint16_t col = 0; col < c->cols; col++)
-            render_cell(c, r, col);
+    uint16_t visrows = (uint16_t)(c->rows - c->protect);
+    uint32_t total = c->hcount + visrows;
+    uint32_t start = total - visrows;   // bottom view shows the live rows
+    if (c->sbview) {
+        uint32_t back = c->sbview;
+        if (back > c->hcount)
+            back = c->hcount;
+        start = total - visrows - back;
+    }
+    for (uint16_t r = c->protect; r < c->rows; r++) {
+        uint32_t v = start + (uint32_t)(r - c->protect);
+        const uint8_t *src = c->hist ? virt_line(c, v) : 0;
+        if (!src) {
+            uint16_t lr = (uint16_t)(c->protect + (v - c->hcount));
+            src = cell(c, lr, 0);
+        }
+        for (uint16_t col = 0; col < c->cols; col++) {
+            const uint8_t *p = src + col * 2;
+            gfx_char(c->vx + col * FONT_W, c->vy + r * FONT_H, (char)p[0],
+                     ink_pal[p[1] & 0xF], paper_pal[(p[1] >> 4) & 0xF]);
+        }
+    }
 }
 
 // --- console lifecycle --------------------------------------------------
@@ -128,6 +172,10 @@ struct console *term_open(uint32_t px, uint32_t py, uint32_t pw, uint32_t ph)
         c->cells[i] = ' ';
         c->cells[i + 1] = TERM_COLOR_WHITE_ON_BLUE;
     }
+    c->hist = kmalloc((uint32_t)SB_LINES * c->cols * 2);   // 0 = no scrollback
+    c->hcount = 0;
+    c->hhead = 0;
+    c->sbview = 0;
     return c;
 }
 
@@ -138,6 +186,7 @@ void term_close(struct console *c)
     if (active == c)
         active = 0;
     kfree(c->cells);
+    kfree(c->hist);
     kfree(c);
 }
 
@@ -181,6 +230,11 @@ uint16_t term_cols(struct console *c)
     return c ? c->cols : 0;
 }
 
+uint16_t term_visible_rows(struct console *c)
+{
+    return c ? (uint16_t)(c->rows - c->protect) : 0;
+}
+
 void term_pos(struct console *c, int *col, int *row)
 {
     if (!c) { *col = 0; *row = 0; return; }
@@ -207,6 +261,15 @@ int term_locate(struct console *c, int mx, int my, int *col, int *row)
 
 static void scroll(struct console *c)
 {
+    if (c->hist) {                       // the leaving line becomes history
+        uint8_t *dst = c->hist + (uint32_t)c->hhead * c->cols * 2;
+        const uint8_t *src = cell(c, c->protect, 0);
+        for (uint32_t i = 0; i < (uint32_t)c->cols * 2; i++)
+            dst[i] = src[i];
+        c->hhead = (uint16_t)((c->hhead + 1) % SB_LINES);
+        if (c->hcount < SB_LINES)
+            c->hcount++;
+    }
     for (uint32_t r = c->protect + 1; r < c->rows; r++)
         for (uint32_t col = 0; col < c->cols; col++) {
             uint8_t *dst = cell(c, (uint16_t)(r - 1), (uint16_t)col);
@@ -333,6 +396,7 @@ void term_clear(void)
         }
     active->crow = active->protect;
     active->ccol = 0;
+    active->sbview = 0;
     term_render(active);
 }
 
@@ -351,4 +415,44 @@ void term_protect(struct console *con, int rows)
         con->crow = con->protect;
     if (con == active)
         term_render(con);
+}
+
+// --- scrollback navigation ----------------------------------------------
+// +lines = back in time, -lines = forward. New output does NOT yank the
+// view back (xterm behaviour); typing does, via term_scroll_end.
+
+void term_scroll_by(struct console *c, int lines)
+{
+    if (!c || !c->hist || !lines)
+        return;
+    int nv = (int)c->sbview + lines;
+    if (nv < 0)
+        nv = 0;
+    if (nv > c->hcount)
+        nv = c->hcount;
+    if (nv == c->sbview)
+        return;
+    c->sbview = (uint16_t)nv;
+    term_render(c);
+}
+
+void term_scroll_home(struct console *c)
+{
+    if (c && c->hist && c->sbview != c->hcount) {
+        c->sbview = c->hcount;
+        term_render(c);
+    }
+}
+
+void term_scroll_end(struct console *c)
+{
+    if (c && c->sbview) {
+        c->sbview = 0;
+        term_render(c);
+    }
+}
+
+uint16_t term_scroll_view(const struct console *c)
+{
+    return c ? c->sbview : 0;
 }
