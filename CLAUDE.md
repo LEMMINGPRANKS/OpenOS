@@ -303,10 +303,21 @@ Never invent other naming schemes. New devices join these registers.
   Boot log line when the takeover lands. Verified in QEMU: 1.7.1 boots,
   software path untouched (no card = honest no-aperture lines); the real
   takeover lights up on the Air/freddiespc USB boots.
+- **v1.7.2** (2026-10-02) — **DONE**: terminal scrollback (the other 1.7
+  decree, half of it). Every console now keeps a 256-line history ring
+  (term.c: lines pushed as they scroll off the top; history + live rows
+  are one virtual buffer term_render can slide through; if the heap can't
+  pay the ~88 KiB, scrollback silently doesn't exist for that console).
+  Navigation: Shift+PgUp/PgDn half-page, Shift+Up/Down line, Shift+Home
+  oldest line, Shift+End back to live (kb.c grew shift-aware E0 keys:
+  KEY_SUP..KEY_SEND). xterm law: new output never yanks the view, typing
+  does. While scrolled, the Shell appbar badge shows "^ N lines up".
+  term_clear() returns to live. Colours already lived in the 1.6.0 dual
+  ink/paper palettes, so "colours + scrollback" is complete. Verified by
+  Freddie's own eyeballs in the QEMU window.
 - **next (1.7)**: part 3 — the display engine: own scanout (gpu_fb flip) +
   hardware cursor (64x64 ARGB image straight into VRAM); also still on the
-  list: a terminal app with colours and scrollback; a music player that
-  beeps tunes through the PC speaker
+  list: a music player that beeps tunes through the PC speaker
 
 ## Build & run
 
