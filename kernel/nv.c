@@ -1,8 +1,8 @@
 #include "nv.h"
+#include "nvregs.h"
 #include "pci.h"
 
 #define NV_VENDOR 0x10DE
-#define NV_BOOT0  0x000000       // family lives at bits 20..28 (coldrivers)
 
 struct nv_known {
     uint16_t dev;
@@ -30,6 +30,20 @@ static int      boot0_ok;
 static char     idstr[44];
 
 int nv_found(void) { return found; }
+
+uint32_t nv_rd32(uint32_t reg)
+{
+    if (!boot0_ok)                   // no reachable BAR0 = no poking
+        return 0;
+    return *(volatile uint32_t *)(uint64_t)(bar0 + reg);
+}
+
+void nv_wr32(uint32_t reg, uint32_t v)
+{
+    if (!boot0_ok)
+        return;
+    *(volatile uint32_t *)(uint64_t)(bar0 + reg) = v;
+}
 
 const char *nv_ident(void)
 {
@@ -76,10 +90,10 @@ int nv_probe(void)
         return 0;
 
     dev_id = pci_device(nv_bus, nv_slot);
+    pci_enable(nv_bus, nv_slot);      // MMIO decode + bus master, driver era
     const struct nv_known *k = 0;
     for (uint32_t i = 0; i < sizeof known / sizeof known[0]; i++)
         if (known[i].dev == dev_id) { k = &known[i]; break; }
-
     // name it (known table first, honest fallback for new-chip day)
     char *p = idstr;
     const char *src = k ? k->name : "NVIDIA GPU";
@@ -97,7 +111,7 @@ int nv_probe(void)
     uint32_t hi = pci_read32(nv_bus, nv_slot, 0, 0x14);
     if (!(lo & 1) && hi == 0 && (lo & ~0xFu) != 0) {
         bar0 = lo & ~0xFu;
-        boot0 = *(volatile uint32_t *)(uint64_t)bar0;
+        boot0 = *(volatile uint32_t *)(uint64_t)(bar0 + NV_PMC_BOOT_0);
         boot0_ok = 1;
     }
     bar_sz[0] = probe_bar_size(nv_bus, nv_slot, 0x10);

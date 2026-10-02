@@ -43,6 +43,7 @@ void kmain(unsigned long magic, unsigned long addr)
     term_puts("   gpu: ");
     term_puts(gpu_ident());
     term_putc('\n');
+    gpu_boot_log();
     term_puts("   booting to desktop...\n\n");
     term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
 

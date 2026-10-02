@@ -10,5 +10,7 @@
 int gpu_probe(void);            // call once at boot
 const char *gpu_ident(void);    // card name, or the software-backend line
 void gpu_info(void);            // the gpuinfo command body
+void gpu_regs(void);            // live register dump (read-only)
+void gpu_boot_log(void);        // one compact boot-log line (-> serial)
 
 #endif

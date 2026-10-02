@@ -1,5 +1,6 @@
 #include "gpu.h"
 #include "nv.h"
+#include "nvregs.h"
 #include "term.h"
 
 static void hex32(uint32_t v)
@@ -54,4 +55,52 @@ void gpu_info(void)
     term_puts("aperture : BAR1 ");
     dec32(nv_bar_size(1) >> 20);
     term_puts(" MiB\n");
+    gpu_regs();
+}
+
+// Live register state, offsets verified against nouveau (nvregs.h).
+// Read-only: this is the doctor checking pulses, not writing prescriptions.
+static void reg_line(const char *name, uint32_t reg)
+{
+    term_puts("  ");
+    term_puts(name);
+    term_puts(" ");
+    hex32(nv_rd32(reg));
+    term_putc('\n');
+}
+
+void gpu_regs(void)
+{
+    if (!nv_found()) {
+        term_puts("regs     : (software backend -- no card to ask)\n");
+        return;
+    }
+    if (!nv_family_known()) {
+        term_puts("regs     : (BAR0 above 4 GiB -- unreachable)\n");
+        return;
+    }
+    term_puts("regs     :\n");
+    reg_line("PMC_BOOT_0    ", NV_PMC_BOOT_0);
+    reg_line("PMC_INTR      ", NV_PMC_INTR);
+    reg_line("PMC_INTR_EN   ", NV_PMC_INTR_EN);
+    reg_line("PMC_ENABLE    ", NV_PMC_ENABLE);
+    reg_line("PFIFO_INTR    ", NV_PFIFO_INTR);
+    reg_line("PFIFO_INTR_EN ", NV_PFIFO_INTR_EN);
+    reg_line("CRTC0_CLK_CTRL", NV50_PDISPLAY_CRTC_CLK_CTRL(0));
+    reg_line("CRTC1_CLK_CTRL", NV50_PDISPLAY_CRTC_CLK_CTRL(1));
+    reg_line("SOR0_SLINK    ", NV50_PDISPLAY_OUT_SLINK(0));
+}
+
+// One compact line for the boot log (mirrors to COM1 serial automatically)
+void gpu_boot_log(void)
+{
+    if (!nv_found() || !nv_family_known())
+        return;
+    term_puts("   gpu regs: BOOT0 ");
+    hex32(nv_rd32(NV_PMC_BOOT_0));
+    term_puts(" PMC_EN ");
+    hex32(nv_rd32(NV_PMC_ENABLE));
+    term_puts(" CRTC0 ");
+    hex32(nv_rd32(NV50_PDISPLAY_CRTC_CLK_CTRL(0)));
+    term_putc('\n');
 }

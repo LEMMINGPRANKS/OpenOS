@@ -165,7 +165,7 @@ static void cmd_help(void)
     term_puts("  getspgk install <pkg>  download a package into ramfs\n");
     term_puts("  getspgk server <ip>    use a real LAN machine as the server\n");
     term_puts("  netinfo       show network info (ip, mac)\n");
-    term_puts("  gpuinfo       show the GPU the detective found\n");
+    term_puts("  gpuinfo       show the GPU the detective found + live registers\n");
     term_puts("  dns <name>    look up a name (try: dns example.com)\n");
     term_puts("  fetch <url>   download a page (try: fetch example.com/)\n");
     term_puts("  news          the News, in a window\n");
