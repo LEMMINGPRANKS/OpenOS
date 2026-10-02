@@ -291,9 +291,22 @@ Never invent other naming schemes. New devices join these registers.
   Targets BOTH the Air (MCP89 deep dive) and freddiespc (RTX 3070 via USB
   boots). Verified in QEMU: 1.7.0 boots, software path + honest fallback
   lines unchanged; real-metal register dump = the USB-boot milestone.
-- **next (1.7)**: part 2 — VRAM takeover (BAR1 aperture + our own buffer);
-  also still on the list: a terminal app with colours and scrollback; a
-  music player that beeps tunes through the PC speaker
+- **v1.7.1** (2026-10-02) — **DONE**: Part 2 of the 1.7 GPU arc — the VRAM
+  takeover. nv.c decodes BAR1 (the VRAM aperture; 64-bit BAR at 0x18,
+  reachable only under the 4 GiB identity map, nv_bar1()). New kernel/vram.c:
+  finds the firmware framebuffer INSIDE the aperture and remaps gfx.c onto
+  the same physical bytes through our own BAR1 window (gfx_remap_fb) — the
+  desktop keeps rendering, but through memory we own — plus a top-down bump
+  allocator (vram_alloc, no free — VRAM is freed by rebooting) saving the
+  top of VRAM for the hardware-cursor image and 2D ops ahead. `gpuvram`
+  command: aperture base/size, framebuffer offset + OWNED status, free KiB.
+  Boot log line when the takeover lands. Verified in QEMU: 1.7.1 boots,
+  software path untouched (no card = honest no-aperture lines); the real
+  takeover lights up on the Air/freddiespc USB boots.
+- **next (1.7)**: part 3 — the display engine: own scanout (gpu_fb flip) +
+  hardware cursor (64x64 ARGB image straight into VRAM); also still on the
+  list: a terminal app with colours and scrollback; a music player that
+  beeps tunes through the PC speaker
 
 ## Build & run
 
