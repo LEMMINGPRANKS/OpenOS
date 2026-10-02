@@ -69,6 +69,11 @@ int gfx_init(unsigned long mb2_addr)
 }
 
 int gfx_available(void) { return ok; }
+
+// The VRAM takeover (1.7 part 2) redraws through the aperture we own:
+// same physical pixels, our own mapping.
+uint64_t gfx_fb_addr(void) { return (uint64_t)fb; }
+void gfx_remap_fb(volatile uint8_t *new_fb) { fb = new_fb; }
 uint32_t gfx_width(void) { return fb_w; }
 uint32_t gfx_height(void) { return fb_h; }
 

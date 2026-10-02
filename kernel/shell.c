@@ -10,6 +10,7 @@
 #include "path.h"
 #include "js.h"
 #include "gpu.h"
+#include "vram.h"
 #include "getspgk.h"
 #include "news.h"
 #include "gfx.h"
@@ -166,6 +167,7 @@ static void cmd_help(void)
     term_puts("  getspgk server <ip>    use a real LAN machine as the server\n");
     term_puts("  netinfo       show network info (ip, mac)\n");
     term_puts("  gpuinfo       show the GPU the detective found + live registers\n");
+    term_puts("  gpuvram       VRAM aperture ownership report\n");
     term_puts("  dns <name>    look up a name (try: dns example.com)\n");
     term_puts("  fetch <url>   download a page (try: fetch example.com/)\n");
     term_puts("  news          the News, in a window\n");
@@ -604,6 +606,7 @@ void shell_execute(char *cmdline)
     }
     else if (!strcmp(cmdline, "netinfo")) cmd_netinfo();
     else if (!strcmp(cmdline, "gpuinfo")) gpu_info();
+    else if (!strcmp(cmdline, "gpuvram")) vram_info();
     else if (!strcmp(cmdline, "dns")) {
         if (!arg) { term_puts("usage: dns <name>\n"); return; }
         if (http_ensure_net() != 0)

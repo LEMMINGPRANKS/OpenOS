@@ -24,6 +24,7 @@ static uint8_t  nv_bus, nv_slot;
 static int      found;
 static uint16_t dev_id;
 static uint32_t bar0;             // MMIO regs base, 0 if unreachable
+static uint32_t bar1;             // VRAM aperture base, 0 if unreachable
 static uint32_t bar_sz[2];
 static uint32_t boot0;
 static int      boot0_ok;
@@ -53,6 +54,7 @@ const char *nv_ident(void)
 uint32_t nv_family(void)  { return boot0_ok ? boot0 : 0xFFFFFFFF; }
 int nv_family_known(void) { return boot0_ok; }
 uint32_t nv_bar0(void)    { return bar0; }
+uint32_t nv_bar1(void)    { return bar1; }
 uint32_t nv_bar_size(int bar)
 {
     return (bar == 0 || bar == 1) ? bar_sz[bar] : 0;
@@ -116,5 +118,12 @@ int nv_probe(void)
     }
     bar_sz[0] = probe_bar_size(nv_bus, nv_slot, 0x10);
     bar_sz[1] = probe_bar_size(nv_bus, nv_slot, 0x18);
+    // BAR1 = the VRAM aperture (always a 64-bit prefetchable MEM BAR at
+    // 0x18). Reachable only if the whole window sits under the identity
+    // map -- same law as BAR0.
+    uint32_t b1lo = pci_read32(nv_bus, nv_slot, 0, 0x18);
+    uint32_t b1hi = pci_read32(nv_bus, nv_slot, 0, 0x1C);
+    if (!(b1lo & 1) && b1hi == 0 && (b1lo & ~0xFu) != 0)
+        bar1 = b1lo & ~0xFu;
     return 1;
 }

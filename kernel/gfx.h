@@ -7,6 +7,8 @@ int gfx_init(unsigned long mb2_addr);         // parse the mb2 framebuffer tag
 int gfx_available(void);
 uint32_t gfx_width(void);
 uint32_t gfx_height(void);
+uint64_t gfx_fb_addr(void);                   // current framebuffer base
+void gfx_remap_fb(volatile uint8_t *new_fb);  // VRAM takeover hook
 
 uint32_t gfx_rgb(uint32_t rgb);              // 0x00RRGGBB -> pixel value
 void gfx_pixel(uint32_t x, uint32_t y, uint32_t rgb);

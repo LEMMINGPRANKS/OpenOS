@@ -13,6 +13,7 @@
 #include "part.h"
 #include "kupdate.h"
 #include "gpu.h"
+#include "vram.h"
 #include "version.h"
 
 #define MB2_BOOT_MAGIC 0x36D76289
@@ -44,6 +45,9 @@ void kmain(unsigned long magic, unsigned long addr)
     term_puts(gpu_ident());
     term_putc('\n');
     gpu_boot_log();
+    if (vram_init()) {
+        term_puts("   gpu vram: aperture OWNED -- drawing through BAR1\n");
+    }
     term_puts("   booting to desktop...\n\n");
     term_setcolor(TERM_COLOR_WHITE_ON_BLUE);
 
