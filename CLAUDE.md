@@ -276,8 +276,24 @@ Never invent other naming schemes. New devices join these registers.
   (<canvas> + OpenJS arrays/onFrame + fixed-point r3d rasterizer — no
   SSE in this kernel by design), then Circuitstorm for OpenOS on his
   real tracks/*.json. Plan file: ~/.claude/plans/gentle-yawning-flurry.md.
-- **next**: a terminal app with colours and scrollback; a music player
-  that beeps tunes through the PC speaker
+- **v1.7.0** (2026-10-02) — **DONE**: Part 1 of the 1.7 GPU arc — the
+  register core. kernel/nvregs.h: named register offsets, every one
+  verified against the nouveau source in linux-7.2.4 (PMC BOOT_0/INTR/
+  INTR_EN/ENABLE, PFIFO INTR/INTR_EN, nv50 PDISPLAY CRTC clock ctrl +
+  SOR SLINK). nv.c grew nv_rd32/nv_wr32 over BAR0 (drops to no-ops when
+  BAR0 is above the 4 GiB identity map) and pci_enable()s the card at
+  probe (MMIO decode + bus master — the driver era begins). gpuinfo now
+  dumps live register state; a compact boot-log line (BOOT0 / PMC_ENABLE /
+  CRTC0) rides to COM1 automatically for wedged-boot debugging. Strictly
+  read-only on metal. 1.7 plan: parts 2-5 = VRAM takeover -> display
+  engine (scanout + hardware cursor) -> PFIFO + nv50-tables ctxprog ->
+  hardware 2D fills/blits (plan file: ~/.claude/plans/parallel-purring-map.md).
+  Targets BOTH the Air (MCP89 deep dive) and freddiespc (RTX 3070 via USB
+  boots). Verified in QEMU: 1.7.0 boots, software path + honest fallback
+  lines unchanged; real-metal register dump = the USB-boot milestone.
+- **next (1.7)**: part 2 — VRAM takeover (BAR1 aperture + our own buffer);
+  also still on the list: a terminal app with colours and scrollback; a
+  music player that beeps tunes through the PC speaker
 
 ## Build & run
 
